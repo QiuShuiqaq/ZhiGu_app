@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.zhiguapp.dji.UsbAttachActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/accessory_filter" />
+        </activity>
+    </application>
+</manifest>

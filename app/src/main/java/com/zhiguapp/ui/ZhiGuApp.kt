@@ -82,6 +82,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zhiguapp.dji.DjiBootstrap
 import com.zhiguapp.ui.theme.Amber
 import com.zhiguapp.ui.theme.Coral
 import com.zhiguapp.ui.theme.CyanGlow
@@ -190,7 +191,8 @@ fun ZhiGuApp(viewModel: ZhiGuViewModel = viewModel()) {
                 padding = padding,
                 onPickVideo = { videoPicker.launch("video/*") },
                 onSelectStreamMode = viewModel::selectStreamMode,
-                onClearVideo = viewModel::clearDemoVideo
+                onClearVideo = viewModel::clearDemoVideo,
+                onInitializeDji = { DjiBootstrap.initialize(context.applicationContext) }
             )
         }
     }
@@ -959,7 +961,8 @@ private fun SettingsScreen(
     padding: PaddingValues,
     onPickVideo: () -> Unit,
     onSelectStreamMode: (StreamMode) -> Unit,
-    onClearVideo: () -> Unit
+    onClearVideo: () -> Unit,
+    onInitializeDji: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -974,7 +977,8 @@ private fun SettingsScreen(
                 state = state,
                 onPickVideo = onPickVideo,
                 onSelectStreamMode = onSelectStreamMode,
-                onClearVideo = onClearVideo
+                onClearVideo = onClearVideo,
+                onInitializeDji = onInitializeDji
             )
         }
         item { DeviceStatusCard(state) }
@@ -1018,7 +1022,8 @@ private fun StreamSourceCard(
     state: ZhiGuUiState,
     onPickVideo: () -> Unit,
     onSelectStreamMode: (StreamMode) -> Unit,
-    onClearVideo: () -> Unit
+    onClearVideo: () -> Unit,
+    onInitializeDji: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -1049,6 +1054,20 @@ private fun StreamSourceCard(
                 }
                 Button(onClick = onClearVideo, modifier = Modifier.weight(1f)) {
                     Text("清除视频")
+                }
+            }
+            if (state.djiEnabled) {
+                Button(
+                    onClick = onInitializeDji,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (state.djiRegistered || state.djiConnected) {
+                            "DJI 已初始化"
+                        } else {
+                            "初始化 DJI"
+                        }
+                    )
                 }
             }
             Text(

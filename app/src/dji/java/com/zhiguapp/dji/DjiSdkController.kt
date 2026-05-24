@@ -18,101 +18,118 @@ import dji.v5.network.DJINetworkManager
 
 object DjiSdkController {
     private var initialized = false
+    private var initializing = false
     private val keyListenerHolder = Any()
     private var cameraAvailabilityListener: ICameraStreamManager.AvailableCameraUpdatedListener? = null
 
     fun initialize(appContext: Context) {
-        if (initialized) return
-        initialized = true
+        if (initialized || initializing) return
+        initializing = true
 
-        DjiRuntime.updateState {
-            it.copy(
-                enabled = true,
-                initEvent = "开始初始化 DJI SDK",
-                lastError = null
-            )
-        }
-
-        SDKManager.getInstance().init(appContext, object : SDKManagerCallback {
-            override fun onRegisterSuccess() {
-                DjiRuntime.updateState {
-                    it.copy(
-                        registered = true,
-                        lastError = null,
-                        initEvent = "DJI 注册成功"
-                    )
-                }
-                registerStatusListeners()
+        runCatching {
+            DjiRuntime.updateState {
+                it.copy(
+                    enabled = true,
+                    initEvent = "开始初始化 DJI SDK",
+                    lastError = null
+                )
             }
 
-            override fun onRegisterFailure(error: IDJIError) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        registered = false,
-                        lastError = error.description(),
-                        initEvent = "DJI 注册失败"
-                    )
-                }
-            }
-
-            override fun onProductDisconnect(productId: Int) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        connected = false,
-                        productId = productId,
-                        initEvent = "设备已断开"
-                    )
-                }
-            }
-
-            override fun onProductConnect(productId: Int) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        connected = true,
-                        productId = productId,
-                        initEvent = "检测到 DJI 设备连接"
-                    )
-                }
-                registerStatusListeners()
-            }
-
-            override fun onProductChanged(productId: Int) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        productId = productId,
-                        initEvent = "设备状态已更新"
-                    )
-                }
-            }
-
-            override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        initEvent = event.name,
-                        initProgress = totalProcess
-                    )
+            SDKManager.getInstance().init(appContext, object : SDKManagerCallback {
+                override fun onRegisterSuccess() {
+                    initialized = true
+                    initializing = false
+                    DjiRuntime.updateState {
+                        it.copy(
+                            registered = true,
+                            lastError = null,
+                            initEvent = "DJI 注册成功"
+                        )
+                    }
+                    registerStatusListeners()
                 }
 
-                if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                override fun onRegisterFailure(error: IDJIError) {
+                    initializing = false
+                    DjiRuntime.updateState {
+                        it.copy(
+                            registered = false,
+                            lastError = error.description(),
+                            initEvent = "DJI 注册失败"
+                        )
+                    }
+                }
+
+                override fun onProductDisconnect(productId: Int) {
+                    DjiRuntime.updateState {
+                        it.copy(
+                            connected = false,
+                            productId = productId,
+                            initEvent = "设备已断开"
+                        )
+                    }
+                }
+
+                override fun onProductConnect(productId: Int) {
+                    initialized = true
+                    initializing = false
+                    DjiRuntime.updateState {
+                        it.copy(
+                            connected = true,
+                            productId = productId,
+                            initEvent = "检测到 DJI 设备连接"
+                        )
+                    }
+                    registerStatusListeners()
+                }
+
+                override fun onProductChanged(productId: Int) {
+                    DjiRuntime.updateState {
+                        it.copy(
+                            productId = productId,
+                            initEvent = "设备状态已更新"
+                        )
+                    }
+                }
+
+                override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
+                    DjiRuntime.updateState {
+                        it.copy(
+                            initEvent = event.name,
+                            initProgress = totalProcess
+                        )
+                    }
+
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                        SDKManager.getInstance().registerApp()
+                    }
+                }
+
+                override fun onDatabaseDownloadProgress(current: Long, total: Long) {
+                    DjiRuntime.updateState {
+                        it.copy(
+                            initEvent = "数据库下载中 ${current}/${total}"
+                        )
+                    }
+                }
+            })
+
+            DJINetworkManager.getInstance().addNetworkStatusListener { isAvailable ->
+                DjiRuntime.updateState {
+                    it.copy(networkAvailable = isAvailable)
+                }
+                if (isAvailable && !SDKManager.getInstance().isRegistered) {
                     SDKManager.getInstance().registerApp()
                 }
             }
-
-            override fun onDatabaseDownloadProgress(current: Long, total: Long) {
-                DjiRuntime.updateState {
-                    it.copy(
-                        initEvent = "数据库下载中 ${current}/${total}"
-                    )
-                }
-            }
-        })
-
-        DJINetworkManager.getInstance().addNetworkStatusListener { isAvailable ->
+        }.onFailure { error ->
+            initializing = false
             DjiRuntime.updateState {
-                it.copy(networkAvailable = isAvailable)
-            }
-            if (isAvailable && !SDKManager.getInstance().isRegistered) {
-                SDKManager.getInstance().registerApp()
+                it.copy(
+                    enabled = true,
+                    initEvent = "DJI 初始化失败",
+                    lastError = error.message ?: error.javaClass.simpleName
+                )
             }
         }
     }

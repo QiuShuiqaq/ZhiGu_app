@@ -28,7 +28,7 @@ object DjiRuntime {
         mutableState.update {
             it.copy(
                 enabled = enabled,
-                initEvent = if (enabled) "等待 SDK 初始化" else "当前为 demo 变体，可直接进行本地演示"
+                initEvent = if (enabled) "DJI 模式已启用，待手动初始化" else "当前为 demo 变体，可直接进行本地演示"
             )
         }
     }

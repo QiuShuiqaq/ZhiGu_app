@@ -49,7 +49,9 @@ import androidx.compose.material.icons.outlined.Directions
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Tune
@@ -482,6 +484,17 @@ private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
     var viewMode by remember { mutableStateOf(AssistViewMode.TopDown) }
     var demoMode by remember { mutableStateOf(AssistDemoMode.Normal) }
     var themeMode by remember { mutableStateOf(AssistThemeMode.Night) }
+    var autoPlay by remember { mutableStateOf(false) }
+
+    LaunchedEffect(autoPlay, demoMode) {
+        if (!autoPlay) return@LaunchedEffect
+        kotlinx.coroutines.delay(2600)
+        demoMode = when (demoMode) {
+            AssistDemoMode.Normal -> AssistDemoMode.Approaching
+            AssistDemoMode.Approaching -> AssistDemoMode.SafePass
+            AssistDemoMode.SafePass -> AssistDemoMode.Normal
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -496,9 +509,14 @@ private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
                 viewMode = viewMode,
                 onViewModeChange = { viewMode = it },
                 demoMode = demoMode,
-                onDemoModeChange = { demoMode = it },
+                onDemoModeChange = {
+                    autoPlay = false
+                    demoMode = it
+                },
                 themeMode = themeMode,
-                onThemeModeChange = { themeMode = it }
+                onThemeModeChange = { themeMode = it },
+                autoPlay = autoPlay,
+                onAutoPlayToggle = { autoPlay = !autoPlay }
             )
         }
         item { AssistSceneCard(state, viewMode, demoMode, themeMode) }
@@ -574,7 +592,9 @@ private fun AssistControlCard(
     demoMode: AssistDemoMode,
     onDemoModeChange: (AssistDemoMode) -> Unit,
     themeMode: AssistThemeMode,
-    onThemeModeChange: (AssistThemeMode) -> Unit
+    onThemeModeChange: (AssistThemeMode) -> Unit,
+    autoPlay: Boolean,
+    onAutoPlayToggle: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -589,6 +609,29 @@ private fun AssistControlCard(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("演示控制", style = MaterialTheme.typography.titleMedium)
                 Text("切换视角、演示模式和主题，方便比赛时快速演示不同场景", style = MaterialTheme.typography.bodyMedium, color = Slate)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("自动轮播", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (autoPlay) "当前自动切换：正常 -> 风险逼近 -> 安全通过"
+                        else "点击开启自动轮播，适合答辩时连续展示",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Slate
+                    )
+                }
+                Button(onClick = onAutoPlayToggle) {
+                    Icon(
+                        imageVector = if (autoPlay) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                        contentDescription = if (autoPlay) "暂停自动演示" else "开启自动演示"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (autoPlay) "暂停" else "自动演示")
+                }
             }
             AssistControlSection(title = "显示视角") {
                 AssistViewMode.entries.forEach { mode ->

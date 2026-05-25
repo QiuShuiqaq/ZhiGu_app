@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
@@ -124,6 +125,12 @@ private data class StatusMetric(
 private enum class AssistViewMode(val label: String) {
     TopDown("俯视"),
     Side("侧视")
+}
+
+private enum class AssistRiskLevel(val label: String, val color: Color) {
+    Safe("低风险", Mint),
+    Notice("中风险", Amber),
+    Alert("高风险", Coral)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -601,6 +608,14 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
     val leftTargetStatus = if (state.missionProgress >= 50) "已识别" else "扫描中"
     val rightTargetStatus = if (state.missionProgress >= 75) "接近" else "监测中"
     val rearTargetStatus = if (state.missionProgress >= 100) "安全" else "占用"
+    val leftDistance = if (state.missionProgress >= 50) "1.2m" else "2.4m"
+    val rightDistance = if (state.missionProgress >= 75) "0.8m" else "1.6m"
+    val rearDistance = if (state.missionProgress >= 100) "1.5m" else "0.4m"
+    val currentRiskLevel = when {
+        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
+        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
+        else -> AssistRiskLevel.Safe
+    }
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -752,6 +767,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         val truckSideTop = height * 0.44f
                         val personX = width * 0.18f
                         val coneX = width * 0.78f
+                        val fanCenter = Offset(width * 0.74f, truckSideTop + height * 0.09f)
 
                         drawLine(
                             color = Color.White.copy(alpha = 0.18f),
@@ -780,6 +796,27 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         )
                         drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.08f, truckSideTop + height * 0.19f))
                         drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.34f, truckSideTop + height * 0.19f))
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.45f),
+                            start = Offset(truckSideLeft + width * 0.44f, truckSideTop + height * 0.09f),
+                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
+                            strokeWidth = 5f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.45f),
+                            start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.06f),
+                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
+                            strokeWidth = 5f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.45f),
+                            start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.12f),
+                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
+                            strokeWidth = 5f,
+                            cap = StrokeCap.Round
+                        )
 
                         drawCircle(
                             color = Color.White.copy(alpha = 0.12f * pulseAlpha),
@@ -826,12 +863,30 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                             radius = 30f + 8f * pulseAlpha,
                             center = Offset(width * 0.72f, groundY - 14f)
                         )
+                        drawArc(
+                            color = Coral.copy(alpha = 0.16f),
+                            startAngle = -36f,
+                            sweepAngle = 72f,
+                            useCenter = true,
+                            topLeft = Offset(fanCenter.x - 110f, fanCenter.y - 110f),
+                            size = Size(220f, 220f),
+                            style = Fill
+                        )
+                        drawArc(
+                            color = Coral.copy(alpha = 0.42f),
+                            startAngle = -28f,
+                            sweepAngle = 56f,
+                            useCenter = false,
+                            topLeft = Offset(fanCenter.x - 110f, fanCenter.y - 110f),
+                            size = Size(220f, 220f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
                     }
                 }
 
                 AssistTargetBadge(
                     title = "人员",
-                    detail = leftTargetStatus,
+                    detail = "$leftTargetStatus · $leftDistance",
                     color = Coral,
                     modifier = Modifier
                         .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopStart else Alignment.CenterStart)
@@ -842,7 +897,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                 )
                 AssistTargetBadge(
                     title = "锥桶",
-                    detail = rightTargetStatus,
+                    detail = "$rightTargetStatus · $rightDistance",
                     color = Amber,
                     modifier = Modifier
                         .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopEnd else Alignment.CenterEnd)
@@ -853,7 +908,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                 )
                 AssistTargetBadge(
                     title = "尾部余量",
-                    detail = rearTargetStatus,
+                    detail = "$rearTargetStatus · $rearDistance",
                     color = Mint,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -917,10 +972,11 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                             color = Color.White,
                             style = MaterialTheme.typography.titleMedium
                         )
+                        RiskBand(level = currentRiskLevel)
                         PerceptionLegendRow("货车", truckStatus, truckStatusColor)
-                        PerceptionLegendRow("左侧目标", leftTargetStatus, Coral)
-                        PerceptionLegendRow("右侧目标", rightTargetStatus, Amber)
-                        PerceptionLegendRow("后方余量", rearTargetStatus, Mint)
+                        PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral)
+                        PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber)
+                        PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint)
                     }
                 }
             }
@@ -937,6 +993,12 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
 
 @Composable
 private fun AssistSummaryRow(state: ZhiGuUiState) {
+    val currentRiskLevel = when {
+        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
+        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
+        else -> AssistRiskLevel.Safe
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -947,6 +1009,7 @@ private fun AssistSummaryRow(state: ZhiGuUiState) {
         AssistMetricCard("安全余量", if (state.missionProgress >= 75) "0.8m" else "0.4m", Mint)
         AssistMetricCard("无人机速度", "1.4m/s", OceanBlue)
         AssistMetricCard("货车状态", if (state.findings.count { !it.resolved } > 0) "预警" else "稳定", Amber)
+        AssistMetricCard("风险等级", currentRiskLevel.label, currentRiskLevel.color)
     }
 }
 
@@ -976,11 +1039,11 @@ private fun AssistMetricCard(title: String, value: String, accent: Color) {
 @Composable
 private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
     val targetItems = listOf(
-        AssistTargetItem("左侧人员", if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中", Coral, Icons.Outlined.Person),
-        AssistTargetItem("右侧障碍物", if (state.missionProgress >= 75) "锥桶区域，建议保持距离" else "边界检测中", Amber, Icons.Outlined.Construction),
-        AssistTargetItem("尾部余量", if (state.missionProgress >= 100) "尾部空间充足" else "尾部需复核", Mint, Icons.Outlined.SwapHoriz),
-        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行" else "侧视下保持低速平稳跟踪", CyanGlow, Icons.Outlined.Air),
-        AssistTargetItem("货车轮廓", "车身边界已锁定，保持持续跟踪", OceanBlue, Icons.Outlined.LocalShipping)
+        AssistTargetItem("左侧人员", if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中，距车 2.4m", Coral, Icons.Outlined.Person, AssistRiskLevel.Alert),
+        AssistTargetItem("右侧障碍物", if (state.missionProgress >= 75) "锥桶区域，建议保持 0.8m 以上距离" else "边界检测中，当前 1.6m", Amber, Icons.Outlined.Construction, AssistRiskLevel.Notice),
+        AssistTargetItem("尾部余量", if (state.missionProgress >= 100) "尾部空间充足，当前 1.5m" else "尾部需复核，当前 0.4m", Mint, Icons.Outlined.SwapHoriz, if (state.missionProgress >= 100) AssistRiskLevel.Safe else AssistRiskLevel.Notice),
+        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行，航速 1.4m/s" else "侧视下保持低速平稳跟踪，俯角稳定", CyanGlow, Icons.Outlined.Air, AssistRiskLevel.Safe),
+        AssistTargetItem("货车轮廓", "车身边界已锁定，车头朝向右前，持续跟踪中", OceanBlue, Icons.Outlined.LocalShipping, AssistRiskLevel.Safe)
     )
 
     Card(
@@ -1022,7 +1085,7 @@ private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) 
                             Text(item.detail, style = MaterialTheme.typography.bodyMedium, color = Slate)
                         }
                     }
-                    StatusPill("在线", item.color.copy(alpha = 0.14f))
+                    StatusPill(item.riskLevel.label, item.riskLevel.color.copy(alpha = 0.14f))
                 }
             }
         }
@@ -1031,6 +1094,12 @@ private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) 
 
 @Composable
 private fun AssistGuidanceCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+    val currentRiskLevel = when {
+        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
+        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
+        else -> AssistRiskLevel.Safe
+    }
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -1043,6 +1112,7 @@ private fun AssistGuidanceCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
             DashboardStatusLine("当前任务", state.missionStatus)
             DashboardStatusLine("风险数量", "${state.findings.count { !it.resolved }} 项")
             DashboardStatusLine("显示视角", viewMode.label)
+            DashboardStatusLine("当前等级", currentRiskLevel.label)
             DashboardStatusLine("建议播报", if (state.missionProgress < 50) "说明无人机正在识别周边人员与物体" else "说明系统已锁定货车周边关键目标")
             Text(
                 text = "这个页面是纯展示型辅助感知屏，不依赖真实算法输入，适合在比赛现场稳定模拟类似智能驾驶的感知界面效果。",
@@ -1058,8 +1128,49 @@ private data class AssistTargetItem(
     val title: String,
     val detail: String,
     val color: Color,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val riskLevel: AssistRiskLevel
 )
+
+@Composable
+private fun RiskBand(level: AssistRiskLevel) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "风险色带",
+            color = Color.White.copy(alpha = 0.76f),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            AssistRiskLevel.entries.forEach { item ->
+                val selected = item == level
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            if (selected) item.color.copy(alpha = 0.88f)
+                            else item.color.copy(alpha = 0.18f)
+                        )
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = item.label,
+                        color = if (selected) Color.White else Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun AssistTargetBadge(

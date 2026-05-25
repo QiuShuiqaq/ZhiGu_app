@@ -133,6 +133,17 @@ private enum class AssistRiskLevel(val label: String, val color: Color) {
     Alert("高风险", Coral)
 }
 
+private enum class AssistDemoMode(val label: String) {
+    Normal("正常"),
+    Approaching("风险逼近"),
+    SafePass("安全通过")
+}
+
+private enum class AssistThemeMode(val label: String) {
+    Day("白天"),
+    Night("夜间")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ZhiGuApp(viewModel: ZhiGuViewModel = viewModel()) {
@@ -469,6 +480,8 @@ private fun LiveFeedsCard(state: ZhiGuUiState) {
 @Composable
 private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
     var viewMode by remember { mutableStateOf(AssistViewMode.TopDown) }
+    var demoMode by remember { mutableStateOf(AssistDemoMode.Normal) }
+    var themeMode by remember { mutableStateOf(AssistThemeMode.Night) }
 
     LazyColumn(
         modifier = Modifier
@@ -477,32 +490,48 @@ private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { AssistHero(state, viewMode) }
-        item { AssistViewModeCard(viewMode = viewMode, onModeChange = { viewMode = it }) }
-        item { AssistSceneCard(state, viewMode) }
-        item { AssistSummaryRow(state) }
-        item { AssistTargetListCard(state, viewMode) }
-        item { AssistGuidanceCard(state, viewMode) }
+        item { AssistHero(state, viewMode, demoMode, themeMode) }
+        item {
+            AssistControlCard(
+                viewMode = viewMode,
+                onViewModeChange = { viewMode = it },
+                demoMode = demoMode,
+                onDemoModeChange = { demoMode = it },
+                themeMode = themeMode,
+                onThemeModeChange = { themeMode = it }
+            )
+        }
+        item { AssistSceneCard(state, viewMode, demoMode, themeMode) }
+        item { AssistSummaryRow(state, demoMode) }
+        item { AssistTargetListCard(state, viewMode, demoMode) }
+        item { AssistGuidanceCard(state, viewMode, demoMode, themeMode) }
     }
 }
 
 @Composable
-private fun AssistHero(state: ZhiGuUiState, viewMode: AssistViewMode) {
+private fun AssistHero(
+    state: ZhiGuUiState,
+    viewMode: AssistViewMode,
+    demoMode: AssistDemoMode,
+    themeMode: AssistThemeMode
+) {
     Card(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
+        val gradientColors = if (themeMode == AssistThemeMode.Night) {
+            listOf(Night, InkBlue, OceanBlue.copy(alpha = 0.92f))
+        } else {
+            listOf(Color(0xFFEAF4FF), Color(0xFFB8D8FF), Color(0xFF7FB3FF))
+        }
+        val primaryTextColor = if (themeMode == AssistThemeMode.Night) Color.White else InkBlue
+        val secondaryTextColor = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.84f) else InkBlue.copy(alpha = 0.74f)
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.linearGradient(
-                        listOf(
-                            Night,
-                            InkBlue,
-                            OceanBlue.copy(alpha = 0.92f)
-                        )
-                    )
+                    Brush.linearGradient(gradientColors)
                 )
                 .padding(22.dp)
         ) {
@@ -511,25 +540,27 @@ private fun AssistHero(state: ZhiGuUiState, viewMode: AssistViewMode) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatusPill("AUX DRIVE VIEW", Color.White.copy(alpha = 0.14f))
-                    StatusPill("目标 4", Color.White.copy(alpha = 0.14f))
-                    StatusPill(viewMode.label, Color.White.copy(alpha = 0.14f))
+                    StatusPill("AUX DRIVE VIEW", primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill("目标 4", primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill(viewMode.label, primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill(demoMode.label, primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill(themeMode.label, primaryTextColor.copy(alpha = 0.14f))
                 }
                 Text(
                     text = "辅助感知屏",
-                    color = Color.White,
+                    color = primaryTextColor,
                     style = MaterialTheme.typography.headlineLarge
                 )
                 Text(
                     text = "模拟展示货车周边人员、障碍物与无人机巡检态势，风格接近智能驾驶感知大屏。",
-                    color = Color.White.copy(alpha = 0.84f),
+                    color = secondaryTextColor,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 LinearProgressIndicator(
                     progress = { state.missionProgress / 100f },
                     modifier = Modifier.fillMaxWidth(),
                     color = CyanGlow,
-                    trackColor = Color.White.copy(alpha = 0.14f)
+                    trackColor = primaryTextColor.copy(alpha = 0.14f)
                 )
             }
         }
@@ -537,34 +568,52 @@ private fun AssistHero(state: ZhiGuUiState, viewMode: AssistViewMode) {
 }
 
 @Composable
-private fun AssistViewModeCard(
+private fun AssistControlCard(
     viewMode: AssistViewMode,
-    onModeChange: (AssistViewMode) -> Unit
+    onViewModeChange: (AssistViewMode) -> Unit,
+    demoMode: AssistDemoMode,
+    onDemoModeChange: (AssistDemoMode) -> Unit,
+    themeMode: AssistThemeMode,
+    onThemeModeChange: (AssistThemeMode) -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("显示视角", style = MaterialTheme.typography.titleMedium)
-                Text("切换俯视与侧视，模拟更接近车机感知屏的展示方式", style = MaterialTheme.typography.bodyMedium, color = Slate)
+                Text("演示控制", style = MaterialTheme.typography.titleMedium)
+                Text("切换视角、演示模式和主题，方便比赛时快速演示不同场景", style = MaterialTheme.typography.bodyMedium, color = Slate)
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            AssistControlSection(title = "显示视角") {
                 AssistViewMode.entries.forEach { mode ->
                     FilterChip(
                         label = mode.label,
                         selected = mode == viewMode,
-                        onClick = { onModeChange(mode) }
+                        onClick = { onViewModeChange(mode) }
+                    )
+                }
+            }
+            AssistControlSection(title = "演示模式") {
+                AssistDemoMode.entries.forEach { mode ->
+                    FilterChip(
+                        label = mode.label,
+                        selected = mode == demoMode,
+                        onClick = { onDemoModeChange(mode) }
+                    )
+                }
+            }
+            AssistControlSection(title = "感知主题") {
+                AssistThemeMode.entries.forEach { mode ->
+                    FilterChip(
+                        label = mode.label,
+                        selected = mode == themeMode,
+                        onClick = { onThemeModeChange(mode) }
                     )
                 }
             }
@@ -573,7 +622,25 @@ private fun AssistViewModeCard(
 }
 
 @Composable
-private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+private fun AssistControlSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun AssistSceneCard(
+    state: ZhiGuUiState,
+    viewMode: AssistViewMode,
+    demoMode: AssistDemoMode,
+    themeMode: AssistThemeMode
+) {
     val sweepTransition = rememberInfiniteTransition(label = "perception_scene")
     val scanProgress by sweepTransition.animateFloat(
         initialValue = 0.16f,
@@ -603,19 +670,59 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
         label = "pulse_alpha"
     )
 
-    val truckStatus = if (state.findings.count { !it.resolved } > 0) "待复核" else "稳定"
+    val unresolvedCount = when (demoMode) {
+        AssistDemoMode.Normal -> state.findings.count { !it.resolved }
+        AssistDemoMode.Approaching -> maxOf(3, state.findings.count { !it.resolved })
+        AssistDemoMode.SafePass -> 0
+    }
+    val truckStatus = if (unresolvedCount > 0) "待复核" else "稳定"
     val truckStatusColor = if (truckStatus == "稳定") Mint else Amber
-    val leftTargetStatus = if (state.missionProgress >= 50) "已识别" else "扫描中"
-    val rightTargetStatus = if (state.missionProgress >= 75) "接近" else "监测中"
-    val rearTargetStatus = if (state.missionProgress >= 100) "安全" else "占用"
-    val leftDistance = if (state.missionProgress >= 50) "1.2m" else "2.4m"
-    val rightDistance = if (state.missionProgress >= 75) "0.8m" else "1.6m"
-    val rearDistance = if (state.missionProgress >= 100) "1.5m" else "0.4m"
+    val leftTargetStatus = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 50) "已识别" else "扫描中"
+        AssistDemoMode.Approaching -> "逼近"
+        AssistDemoMode.SafePass -> "通过"
+    }
+    val rightTargetStatus = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 75) "接近" else "监测中"
+        AssistDemoMode.Approaching -> "危险"
+        AssistDemoMode.SafePass -> "远离"
+    }
+    val rearTargetStatus = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 100) "安全" else "占用"
+        AssistDemoMode.Approaching -> "紧张"
+        AssistDemoMode.SafePass -> "安全"
+    }
+    val leftDistance = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 50) "1.2m" else "2.4m"
+        AssistDemoMode.Approaching -> "0.6m"
+        AssistDemoMode.SafePass -> "2.8m"
+    }
+    val rightDistance = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 75) "0.8m" else "1.6m"
+        AssistDemoMode.Approaching -> "0.5m"
+        AssistDemoMode.SafePass -> "2.2m"
+    }
+    val rearDistance = when (demoMode) {
+        AssistDemoMode.Normal -> if (state.missionProgress >= 100) "1.5m" else "0.4m"
+        AssistDemoMode.Approaching -> "0.3m"
+        AssistDemoMode.SafePass -> "1.8m"
+    }
     val currentRiskLevel = when {
-        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
-        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
+        demoMode == AssistDemoMode.Approaching -> AssistRiskLevel.Alert
+        demoMode == AssistDemoMode.SafePass -> AssistRiskLevel.Safe
+        unresolvedCount >= 3 -> AssistRiskLevel.Alert
+        unresolvedCount >= 1 -> AssistRiskLevel.Notice
         else -> AssistRiskLevel.Safe
     }
+    val sceneBackground = if (themeMode == AssistThemeMode.Night) {
+        listOf(InkBlue, OceanBlue.copy(alpha = 0.92f), Night)
+    } else {
+        listOf(Color(0xFFEAF4FF), Color(0xFFB7D8FF), Color(0xFF78AFFF))
+    }
+    val overlayText = if (themeMode == AssistThemeMode.Night) Color.White else InkBlue
+    val overlaySubText = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.82f) else InkBlue.copy(alpha = 0.72f)
+    val panelBackground = if (themeMode == AssistThemeMode.Night) NightCard.copy(alpha = 0.84f) else Color.White.copy(alpha = 0.82f)
+    val trackLineColor = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.18f) else InkBlue.copy(alpha = 0.18f)
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -633,11 +740,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                     .clip(RoundedCornerShape(22.dp))
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                InkBlue,
-                                OceanBlue.copy(alpha = 0.92f),
-                                Night
-                            )
+                            colors = sceneBackground
                         )
                     )
             ) {
@@ -657,21 +760,21 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                     val rearTarget = Offset(width * 0.5f, height * 0.88f)
                     if (viewMode == AssistViewMode.TopDown) {
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.06f),
+                            color = overlayText.copy(alpha = 0.08f),
                             topLeft = Offset(width * 0.08f, height * 0.08f),
                             size = Size(width * 0.84f, height * 0.82f),
                             cornerRadius = CornerRadius(36f, 36f)
                         )
 
                         drawLine(
-                            color = Color.White.copy(alpha = 0.18f),
+                            color = trackLineColor,
                             start = Offset(laneLeft, height * 0.06f),
                             end = Offset(laneLeft, height * 0.94f),
                             strokeWidth = 4f,
                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f))
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.18f),
+                            color = trackLineColor,
                             start = Offset(laneRight, height * 0.06f),
                             end = Offset(laneRight, height * 0.94f),
                             strokeWidth = 4f,
@@ -686,7 +789,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         )
 
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.08f),
+                            color = overlayText.copy(alpha = 0.1f),
                             topLeft = Offset(centerX - truckWidth / 2f, truckTop),
                             size = Size(truckWidth, truckHeight),
                             cornerRadius = CornerRadius(28f, 28f)
@@ -711,7 +814,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         )
 
                         drawCircle(
-                            color = Color.White.copy(alpha = 0.12f * pulseAlpha),
+                            color = overlayText.copy(alpha = 0.12f * pulseAlpha),
                             radius = 46f + 22f * pulseAlpha,
                             center = Offset(droneX, droneY)
                         )
@@ -721,14 +824,14 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                             center = Offset(droneX, droneY)
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = overlayText.copy(alpha = 0.9f),
                             start = Offset(droneX - 24f, droneY),
                             end = Offset(droneX + 24f, droneY),
                             strokeWidth = 4f,
                             cap = StrokeCap.Round
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = overlayText.copy(alpha = 0.9f),
                             start = Offset(droneX, droneY - 18f),
                             end = Offset(droneX, droneY + 18f),
                             strokeWidth = 4f,
@@ -760,6 +863,11 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                                 radius = 28f + 10f * pulseAlpha,
                                 center = target
                             )
+                            drawCircle(
+                                color = alertColor.copy(alpha = 0.4f * pulseAlpha),
+                                radius = 42f + 12f * pulseAlpha,
+                                center = target
+                            )
                         }
                     } else {
                         val groundY = height * 0.78f
@@ -770,7 +878,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         val fanCenter = Offset(width * 0.74f, truckSideTop + height * 0.09f)
 
                         drawLine(
-                            color = Color.White.copy(alpha = 0.18f),
+                            color = trackLineColor,
                             start = Offset(width * 0.1f, groundY),
                             end = Offset(width * 0.9f, groundY),
                             strokeWidth = 4f
@@ -789,7 +897,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                             cornerRadius = CornerRadius(26f, 26f)
                         )
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.12f),
+                            color = overlayText.copy(alpha = 0.12f),
                             topLeft = Offset(truckSideLeft + width * 0.26f, truckSideTop - height * 0.06f),
                             size = Size(width * 0.12f, height * 0.08f),
                             cornerRadius = CornerRadius(22f, 22f)
@@ -797,21 +905,21 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.08f, truckSideTop + height * 0.19f))
                         drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.34f, truckSideTop + height * 0.19f))
                         drawLine(
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = overlayText.copy(alpha = 0.45f),
                             start = Offset(truckSideLeft + width * 0.44f, truckSideTop + height * 0.09f),
                             end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
                             strokeWidth = 5f,
                             cap = StrokeCap.Round
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = overlayText.copy(alpha = 0.45f),
                             start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.06f),
                             end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
                             strokeWidth = 5f,
                             cap = StrokeCap.Round
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = overlayText.copy(alpha = 0.45f),
                             start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.12f),
                             end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
                             strokeWidth = 5f,
@@ -819,20 +927,20 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         )
 
                         drawCircle(
-                            color = Color.White.copy(alpha = 0.12f * pulseAlpha),
+                            color = overlayText.copy(alpha = 0.12f * pulseAlpha),
                             radius = 46f + 20f * pulseAlpha,
                             center = Offset(width * 0.38f, height * 0.18f)
                         )
                         drawCircle(CyanGlow.copy(alpha = 0.9f), 16f, Offset(width * 0.38f, height * 0.18f))
                         drawLine(
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = overlayText.copy(alpha = 0.9f),
                             start = Offset(width * 0.35f, height * 0.18f),
                             end = Offset(width * 0.41f, height * 0.18f),
                             strokeWidth = 4f,
                             cap = StrokeCap.Round
                         )
                         drawLine(
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = overlayText.copy(alpha = 0.9f),
                             start = Offset(width * 0.38f, height * 0.15f),
                             end = Offset(width * 0.38f, height * 0.21f),
                             strokeWidth = 4f,
@@ -924,7 +1032,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                     StatusPill("DRONE LINK", Color.White.copy(alpha = 0.14f))
                     Text(
                         text = "AI 感知模拟中",
-                        color = Color.White,
+                        color = overlayText,
                         style = MaterialTheme.typography.titleLarge
                     )
                     Text(
@@ -933,7 +1041,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         } else {
                             "检测目标：侧视跟踪 / 货车轮廓 / 周边风险 3"
                         },
-                        color = Color.White.copy(alpha = 0.82f),
+                        color = overlaySubText,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -946,12 +1054,12 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                 ) {
                     Text(
                         text = "货车稳定性 $truckStatus",
-                        color = Color.White,
+                        color = overlayText,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
                         text = if (viewMode == AssistViewMode.TopDown) "无人机正在执行侧前方巡检轨迹" else "侧视感知正在追踪车身、人员与后方空间",
-                        color = Color.White.copy(alpha = 0.82f),
+                        color = overlaySubText,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -961,7 +1069,7 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                         .align(Alignment.TopEnd)
                         .padding(14.dp),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = NightCard.copy(alpha = 0.84f))
+                    colors = CardDefaults.cardColors(containerColor = panelBackground)
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -969,14 +1077,14 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
                     ) {
                         Text(
                             text = "目标态势",
-                            color = Color.White,
+                            color = overlayText,
                             style = MaterialTheme.typography.titleMedium
                         )
                         RiskBand(level = currentRiskLevel)
-                        PerceptionLegendRow("货车", truckStatus, truckStatusColor)
-                        PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral)
-                        PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber)
-                        PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint)
+                        PerceptionLegendRow("货车", truckStatus, truckStatusColor, overlayText)
+                        PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral, overlayText)
+                        PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber, overlayText)
+                        PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint, overlayText)
                     }
                 }
             }
@@ -992,8 +1100,10 @@ private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
 }
 
 @Composable
-private fun AssistSummaryRow(state: ZhiGuUiState) {
+private fun AssistSummaryRow(state: ZhiGuUiState, demoMode: AssistDemoMode) {
     val currentRiskLevel = when {
+        demoMode == AssistDemoMode.Approaching -> AssistRiskLevel.Alert
+        demoMode == AssistDemoMode.SafePass -> AssistRiskLevel.Safe
         state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
         state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
         else -> AssistRiskLevel.Safe
@@ -1006,9 +1116,13 @@ private fun AssistSummaryRow(state: ZhiGuUiState) {
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         AssistMetricCard("识别目标", "4", CyanGlow)
-        AssistMetricCard("安全余量", if (state.missionProgress >= 75) "0.8m" else "0.4m", Mint)
-        AssistMetricCard("无人机速度", "1.4m/s", OceanBlue)
-        AssistMetricCard("货车状态", if (state.findings.count { !it.resolved } > 0) "预警" else "稳定", Amber)
+        AssistMetricCard("安全余量", when (demoMode) {
+            AssistDemoMode.Normal -> if (state.missionProgress >= 75) "0.8m" else "0.4m"
+            AssistDemoMode.Approaching -> "0.3m"
+            AssistDemoMode.SafePass -> "1.8m"
+        }, Mint)
+        AssistMetricCard("无人机速度", if (demoMode == AssistDemoMode.Approaching) "1.8m/s" else "1.4m/s", OceanBlue)
+        AssistMetricCard("货车状态", if (currentRiskLevel == AssistRiskLevel.Safe) "稳定" else "预警", Amber)
         AssistMetricCard("风险等级", currentRiskLevel.label, currentRiskLevel.color)
     }
 }
@@ -1037,12 +1151,50 @@ private fun AssistMetricCard(title: String, value: String, accent: Color) {
 }
 
 @Composable
-private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+private fun AssistTargetListCard(
+    state: ZhiGuUiState,
+    viewMode: AssistViewMode,
+    demoMode: AssistDemoMode
+) {
     val targetItems = listOf(
-        AssistTargetItem("左侧人员", if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中，距车 2.4m", Coral, Icons.Outlined.Person, AssistRiskLevel.Alert),
-        AssistTargetItem("右侧障碍物", if (state.missionProgress >= 75) "锥桶区域，建议保持 0.8m 以上距离" else "边界检测中，当前 1.6m", Amber, Icons.Outlined.Construction, AssistRiskLevel.Notice),
-        AssistTargetItem("尾部余量", if (state.missionProgress >= 100) "尾部空间充足，当前 1.5m" else "尾部需复核，当前 0.4m", Mint, Icons.Outlined.SwapHoriz, if (state.missionProgress >= 100) AssistRiskLevel.Safe else AssistRiskLevel.Notice),
-        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行，航速 1.4m/s" else "侧视下保持低速平稳跟踪，俯角稳定", CyanGlow, Icons.Outlined.Air, AssistRiskLevel.Safe),
+        AssistTargetItem(
+            "左侧人员",
+            when (demoMode) {
+                AssistDemoMode.Normal -> if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中，距车 2.4m"
+                AssistDemoMode.Approaching -> "人员快速逼近，当前 0.6m"
+                AssistDemoMode.SafePass -> "人员已离开风险区，当前 2.8m"
+            },
+            Coral,
+            Icons.Outlined.Person,
+            if (demoMode == AssistDemoMode.SafePass) AssistRiskLevel.Safe else AssistRiskLevel.Alert
+        ),
+        AssistTargetItem(
+            "右侧障碍物",
+            when (demoMode) {
+                AssistDemoMode.Normal -> if (state.missionProgress >= 75) "锥桶区域，建议保持 0.8m 以上距离" else "边界检测中，当前 1.6m"
+                AssistDemoMode.Approaching -> "障碍物进入危险区，当前 0.5m"
+                AssistDemoMode.SafePass -> "障碍物已通过，当前 2.2m"
+            },
+            Amber,
+            Icons.Outlined.Construction,
+            if (demoMode == AssistDemoMode.Approaching) AssistRiskLevel.Alert else AssistRiskLevel.Notice
+        ),
+        AssistTargetItem(
+            "尾部余量",
+            when (demoMode) {
+                AssistDemoMode.Normal -> if (state.missionProgress >= 100) "尾部空间充足，当前 1.5m" else "尾部需复核，当前 0.4m"
+                AssistDemoMode.Approaching -> "尾部空间紧张，当前 0.3m"
+                AssistDemoMode.SafePass -> "尾部空间充足，当前 1.8m"
+            },
+            Mint,
+            Icons.Outlined.SwapHoriz,
+            when (demoMode) {
+                AssistDemoMode.Approaching -> AssistRiskLevel.Notice
+                AssistDemoMode.SafePass -> AssistRiskLevel.Safe
+                AssistDemoMode.Normal -> if (state.missionProgress >= 100) AssistRiskLevel.Safe else AssistRiskLevel.Notice
+            }
+        ),
+        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行，航速 ${if (demoMode == AssistDemoMode.Approaching) "1.8" else "1.4"}m/s" else "侧视下保持低速平稳跟踪，俯角稳定", CyanGlow, Icons.Outlined.Air, AssistRiskLevel.Safe),
         AssistTargetItem("货车轮廓", "车身边界已锁定，车头朝向右前，持续跟踪中", OceanBlue, Icons.Outlined.LocalShipping, AssistRiskLevel.Safe)
     )
 
@@ -1093,8 +1245,15 @@ private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) 
 }
 
 @Composable
-private fun AssistGuidanceCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+private fun AssistGuidanceCard(
+    state: ZhiGuUiState,
+    viewMode: AssistViewMode,
+    demoMode: AssistDemoMode,
+    themeMode: AssistThemeMode
+) {
     val currentRiskLevel = when {
+        demoMode == AssistDemoMode.Approaching -> AssistRiskLevel.Alert
+        demoMode == AssistDemoMode.SafePass -> AssistRiskLevel.Safe
         state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
         state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
         else -> AssistRiskLevel.Safe
@@ -1112,8 +1271,17 @@ private fun AssistGuidanceCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
             DashboardStatusLine("当前任务", state.missionStatus)
             DashboardStatusLine("风险数量", "${state.findings.count { !it.resolved }} 项")
             DashboardStatusLine("显示视角", viewMode.label)
+            DashboardStatusLine("演示模式", demoMode.label)
+            DashboardStatusLine("感知主题", themeMode.label)
             DashboardStatusLine("当前等级", currentRiskLevel.label)
-            DashboardStatusLine("建议播报", if (state.missionProgress < 50) "说明无人机正在识别周边人员与物体" else "说明系统已锁定货车周边关键目标")
+            DashboardStatusLine(
+                "建议播报",
+                when (demoMode) {
+                    AssistDemoMode.Normal -> if (state.missionProgress < 50) "说明无人机正在识别周边人员与物体" else "说明系统已锁定货车周边关键目标"
+                    AssistDemoMode.Approaching -> "强调风险目标逼近、系统正在实时预警"
+                    AssistDemoMode.SafePass -> "强调风险已解除、辅助系统完成安全通过提示"
+                }
+            )
             Text(
                 text = "这个页面是纯展示型辅助感知屏，不依赖真实算法输入，适合在比赛现场稳定模拟类似智能驾驶的感知界面效果。",
                 style = MaterialTheme.typography.bodyMedium,
@@ -1206,7 +1374,7 @@ private fun AssistTargetBadge(
 }
 
 @Composable
-private fun PerceptionLegendRow(label: String, value: String, color: Color) {
+private fun PerceptionLegendRow(label: String, value: String, color: Color, textColor: Color = Color.White) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1222,9 +1390,9 @@ private fun PerceptionLegendRow(label: String, value: String, color: Color) {
                     .clip(CircleShape)
                     .background(color)
             )
-            Text(label, color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
+            Text(label, color = textColor.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
         }
-        Text(value, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+        Text(value, color = textColor, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

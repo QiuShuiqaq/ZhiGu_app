@@ -779,13 +779,9 @@ private fun AssistSceneCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(420.dp)
+                    .height(456.dp)
                     .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            colors = sceneBackground
-                        )
-                    )
+                    .background(Brush.verticalGradient(colors = sceneBackground))
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
@@ -793,14 +789,17 @@ private fun AssistSceneCard(
                     val laneLeft = width * 0.22f
                     val laneRight = width * 0.78f
                     val centerX = width * 0.5f
-                    val truckTop = height * 0.52f
+                    val truckTop = height * 0.5f
                     val truckWidth = width * 0.2f
-                    val truckHeight = height * 0.28f
+                    val truckHeight = height * 0.24f
                     val droneX = width * (0.28f + 0.44f * droneOffset)
                     val droneY = height * (0.14f + 0.03f * kotlin.math.sin(droneOffset * Math.PI).toFloat())
-                    val leftTarget = Offset(width * 0.24f, height * 0.36f)
-                    val rightTarget = Offset(width * 0.77f, height * 0.42f)
-                    val rearTarget = Offset(width * 0.5f, height * 0.88f)
+                    val leftTarget = Offset(width * 0.24f, height * 0.34f)
+                    val rightTarget = Offset(width * 0.77f, height * 0.4f)
+                    val rearTarget = Offset(width * 0.5f, height * 0.84f)
+                    val supportTarget = Offset(width * 0.14f, height * 0.72f)
+                    val palletTarget = Offset(width * 0.84f, height * 0.72f)
+
                     if (viewMode == AssistViewMode.TopDown) {
                         drawRoundRect(
                             color = overlayText.copy(alpha = 0.08f),
@@ -808,7 +807,6 @@ private fun AssistSceneCard(
                             size = Size(width * 0.84f, height * 0.82f),
                             cornerRadius = CornerRadius(36f, 36f)
                         )
-
                         drawLine(
                             color = trackLineColor,
                             start = Offset(laneLeft, height * 0.06f),
@@ -829,6 +827,25 @@ private fun AssistSceneCard(
                             end = Offset(width * 0.88f, height * scanProgress),
                             strokeWidth = 5f,
                             cap = StrokeCap.Round
+                        )
+
+                        drawRoundRect(
+                            color = overlayText.copy(alpha = 0.05f),
+                            topLeft = Offset(width * 0.12f, height * 0.14f),
+                            size = Size(width * 0.1f, height * 0.16f),
+                            cornerRadius = CornerRadius(20f, 20f)
+                        )
+                        drawRoundRect(
+                            color = overlayText.copy(alpha = 0.05f),
+                            topLeft = Offset(width * 0.78f, height * 0.16f),
+                            size = Size(width * 0.08f, height * 0.12f),
+                            cornerRadius = CornerRadius(18f, 18f)
+                        )
+                        drawRoundRect(
+                            color = overlayText.copy(alpha = 0.05f),
+                            topLeft = Offset(width * 0.74f, height * 0.68f),
+                            size = Size(width * 0.12f, height * 0.1f),
+                            cornerRadius = CornerRadius(18f, 18f)
                         )
 
                         drawRoundRect(
@@ -912,13 +929,29 @@ private fun AssistSceneCard(
                                 center = target
                             )
                         }
+
+                        drawRoundRect(
+                            color = OceanBlue.copy(alpha = 0.88f),
+                            topLeft = Offset(supportTarget.x - 26f, supportTarget.y - 26f),
+                            size = Size(52f, 52f),
+                            cornerRadius = CornerRadius(16f, 16f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
+                        drawRoundRect(
+                            color = Mint.copy(alpha = 0.88f),
+                            topLeft = Offset(palletTarget.x - 30f, palletTarget.y - 20f),
+                            size = Size(60f, 40f),
+                            cornerRadius = CornerRadius(12f, 12f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
                     } else {
                         val groundY = height * 0.78f
-                        val truckSideLeft = width * 0.26f
-                        val truckSideTop = height * 0.44f
+                        val truckSideLeft = width * 0.24f
+                        val truckSideTop = height * 0.42f
                         val personX = width * 0.18f
                         val coneX = width * 0.78f
                         val fanCenter = Offset(width * 0.74f, truckSideTop + height * 0.09f)
+                        val palletX = width * 0.86f
 
                         drawLine(
                             color = trackLineColor,
@@ -1014,6 +1047,20 @@ private fun AssistSceneCard(
                             radius = 30f + 8f * pulseAlpha,
                             center = Offset(width * 0.72f, groundY - 14f)
                         )
+                        drawRoundRect(
+                            color = Mint.copy(alpha = 0.82f),
+                            topLeft = Offset(palletX - 26f, groundY - 58f),
+                            size = Size(52f, 36f),
+                            cornerRadius = CornerRadius(10f, 10f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
+                        drawRoundRect(
+                            color = OceanBlue.copy(alpha = 0.82f),
+                            topLeft = Offset(width * 0.08f, groundY - 46f),
+                            size = Size(32f, 52f),
+                            cornerRadius = CornerRadius(10f, 10f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
                         drawArc(
                             color = Coral.copy(alpha = 0.16f),
                             startAngle = -36f,
@@ -1072,7 +1119,7 @@ private fun AssistSceneCard(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    StatusPill("DRONE LINK", Color.White.copy(alpha = 0.14f))
+                    StatusPill("DRONE LINK", overlayText.copy(alpha = 0.14f))
                     Text(
                         text = "AI 感知模拟中",
                         color = overlayText,
@@ -1080,9 +1127,9 @@ private fun AssistSceneCard(
                     )
                     Text(
                         text = if (viewMode == AssistViewMode.TopDown) {
-                            "检测目标：无人机 1 / 货车 1 / 人员与物体 3"
+                            "检测目标：无人机 1 / 货车 1 / 人员与物体 5"
                         } else {
-                            "检测目标：侧视跟踪 / 货车轮廓 / 周边风险 3"
+                            "检测目标：侧视跟踪 / 货车轮廓 / 周边风险 5"
                         },
                         color = overlaySubText,
                         style = MaterialTheme.typography.bodyMedium
@@ -1101,34 +1148,10 @@ private fun AssistSceneCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (viewMode == AssistViewMode.TopDown) "无人机正在执行侧前方巡检轨迹" else "侧视感知正在追踪车身、人员与后方空间",
+                        text = if (viewMode == AssistViewMode.TopDown) "无人机正在执行侧前方巡检轨迹，支撑柱与托盘同步识别" else "侧视感知正在追踪车身、人员、托盘与后方空间",
                         color = overlaySubText,
                         style = MaterialTheme.typography.bodyMedium
                     )
-                }
-
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(14.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = panelBackground)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "目标态势",
-                            color = overlayText,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        RiskBand(level = currentRiskLevel)
-                        PerceptionLegendRow("货车", truckStatus, truckStatusColor, overlayText)
-                        PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral, overlayText)
-                        PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber, overlayText)
-                        PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint, overlayText)
-                    }
                 }
             }
 
@@ -1136,7 +1159,30 @@ private fun AssistSceneCard(
                 StatusPill("货车 1", Amber.copy(alpha = 0.16f))
                 StatusPill("无人机 1", CyanGlow.copy(alpha = 0.18f))
                 StatusPill("人员 1", Coral.copy(alpha = 0.14f))
-                StatusPill("物体 2", Mint.copy(alpha = 0.14f))
+                StatusPill("设备 1", OceanBlue.copy(alpha = 0.14f))
+                StatusPill("物体 3", Mint.copy(alpha = 0.14f))
+            }
+
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = panelBackground)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "目标态势",
+                        color = overlayText,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    RiskBand(level = currentRiskLevel)
+                    PerceptionLegendRow("货车", truckStatus, truckStatusColor, overlayText)
+                    PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral, overlayText)
+                    PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber, overlayText)
+                    PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint, overlayText)
+                    PerceptionLegendRow("辅助设备", if (viewMode == AssistViewMode.TopDown) "支撑柱 / 托盘已识别" else "设备轮廓稳定", OceanBlue, overlayText)
+                }
             }
         }
     }

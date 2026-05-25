@@ -18,6 +18,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,12 +42,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Construction
 import androidx.compose.material.icons.outlined.Directions
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.ImageSearch
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
@@ -71,12 +79,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -88,11 +102,14 @@ import com.zhiguapp.ui.theme.Coral
 import com.zhiguapp.ui.theme.CyanGlow
 import com.zhiguapp.ui.theme.InkBlue
 import com.zhiguapp.ui.theme.Mint
+import com.zhiguapp.ui.theme.Night
+import com.zhiguapp.ui.theme.NightCard
 import com.zhiguapp.ui.theme.OceanBlue
 import com.zhiguapp.ui.theme.Slate
 
 private enum class RootTab(val label: String) {
     Dashboard("首页"),
+    Assist("辅助"),
     Mission("作业"),
     Inspect("检测"),
     Settings("设置")
@@ -103,6 +120,11 @@ private data class StatusMetric(
     val value: String,
     val accent: Color
 )
+
+private enum class AssistViewMode(val label: String) {
+    TopDown("俯视"),
+    Side("侧视")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,6 +163,7 @@ fun ZhiGuApp(viewModel: ZhiGuViewModel = viewModel()) {
                         Text(
                             text = when (currentTab) {
                                 RootTab.Dashboard -> "演示总览"
+                                RootTab.Assist -> "辅助感知"
                                 RootTab.Mission -> "任务推进"
                                 RootTab.Inspect -> "风险闭环"
                                 RootTab.Settings -> "配置与设备"
@@ -169,6 +192,7 @@ fun ZhiGuApp(viewModel: ZhiGuViewModel = viewModel()) {
                             Icon(
                                 imageVector = when (tab) {
                                     RootTab.Dashboard -> Icons.Outlined.Flight
+                                    RootTab.Assist -> Icons.Outlined.WarningAmber
                                     RootTab.Mission -> Icons.Outlined.Directions
                                     RootTab.Inspect -> Icons.Outlined.ImageSearch
                                     RootTab.Settings -> Icons.Outlined.Settings
@@ -184,6 +208,7 @@ fun ZhiGuApp(viewModel: ZhiGuViewModel = viewModel()) {
     ) { padding ->
         when (currentTab) {
             RootTab.Dashboard -> DashboardScreen(state, padding)
+            RootTab.Assist -> AssistScreen(state, padding)
             RootTab.Mission -> MissionScreen(state, padding, viewModel)
             RootTab.Inspect -> InspectScreen(state, padding, viewModel)
             RootTab.Settings -> SettingsScreen(
@@ -431,6 +456,664 @@ private fun LiveFeedsCard(state: ZhiGuUiState) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
+    var viewMode by remember { mutableStateOf(AssistViewMode.TopDown) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item { AssistHero(state, viewMode) }
+        item { AssistViewModeCard(viewMode = viewMode, onModeChange = { viewMode = it }) }
+        item { AssistSceneCard(state, viewMode) }
+        item { AssistSummaryRow(state) }
+        item { AssistTargetListCard(state, viewMode) }
+        item { AssistGuidanceCard(state, viewMode) }
+    }
+}
+
+@Composable
+private fun AssistHero(state: ZhiGuUiState, viewMode: AssistViewMode) {
+    Card(
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Night,
+                            InkBlue,
+                            OceanBlue.copy(alpha = 0.92f)
+                        )
+                    )
+                )
+                .padding(22.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatusPill("AUX DRIVE VIEW", Color.White.copy(alpha = 0.14f))
+                    StatusPill("目标 4", Color.White.copy(alpha = 0.14f))
+                    StatusPill(viewMode.label, Color.White.copy(alpha = 0.14f))
+                }
+                Text(
+                    text = "辅助感知屏",
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineLarge
+                )
+                Text(
+                    text = "模拟展示货车周边人员、障碍物与无人机巡检态势，风格接近智能驾驶感知大屏。",
+                    color = Color.White.copy(alpha = 0.84f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                LinearProgressIndicator(
+                    progress = { state.missionProgress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = CyanGlow,
+                    trackColor = Color.White.copy(alpha = 0.14f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistViewModeCard(
+    viewMode: AssistViewMode,
+    onModeChange: (AssistViewMode) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("显示视角", style = MaterialTheme.typography.titleMedium)
+                Text("切换俯视与侧视，模拟更接近车机感知屏的展示方式", style = MaterialTheme.typography.bodyMedium, color = Slate)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AssistViewMode.entries.forEach { mode ->
+                    FilterChip(
+                        label = mode.label,
+                        selected = mode == viewMode,
+                        onClick = { onModeChange(mode) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistSceneCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+    val sweepTransition = rememberInfiniteTransition(label = "perception_scene")
+    val scanProgress by sweepTransition.animateFloat(
+        initialValue = 0.16f,
+        targetValue = 0.84f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scan_progress"
+    )
+    val droneOffset by sweepTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "drone_offset"
+    )
+    val pulseAlpha by sweepTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
+
+    val truckStatus = if (state.findings.count { !it.resolved } > 0) "待复核" else "稳定"
+    val truckStatusColor = if (truckStatus == "稳定") Mint else Amber
+    val leftTargetStatus = if (state.missionProgress >= 50) "已识别" else "扫描中"
+    val rightTargetStatus = if (state.missionProgress >= 75) "接近" else "监测中"
+    val rearTargetStatus = if (state.missionProgress >= 100) "安全" else "占用"
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            SectionHeader("态势图", "智能辅助驾驶风格示意")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                InkBlue,
+                                OceanBlue.copy(alpha = 0.92f),
+                                Night
+                            )
+                        )
+                    )
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val width = size.width
+                    val height = size.height
+                    val laneLeft = width * 0.22f
+                    val laneRight = width * 0.78f
+                    val centerX = width * 0.5f
+                    val truckTop = height * 0.52f
+                    val truckWidth = width * 0.2f
+                    val truckHeight = height * 0.28f
+                    val droneX = width * (0.28f + 0.44f * droneOffset)
+                    val droneY = height * (0.14f + 0.03f * kotlin.math.sin(droneOffset * Math.PI).toFloat())
+                    val leftTarget = Offset(width * 0.24f, height * 0.36f)
+                    val rightTarget = Offset(width * 0.77f, height * 0.42f)
+                    val rearTarget = Offset(width * 0.5f, height * 0.88f)
+                    if (viewMode == AssistViewMode.TopDown) {
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.06f),
+                            topLeft = Offset(width * 0.08f, height * 0.08f),
+                            size = Size(width * 0.84f, height * 0.82f),
+                            cornerRadius = CornerRadius(36f, 36f)
+                        )
+
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.18f),
+                            start = Offset(laneLeft, height * 0.06f),
+                            end = Offset(laneLeft, height * 0.94f),
+                            strokeWidth = 4f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f))
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.18f),
+                            start = Offset(laneRight, height * 0.06f),
+                            end = Offset(laneRight, height * 0.94f),
+                            strokeWidth = 4f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f))
+                        )
+                        drawLine(
+                            color = CyanGlow.copy(alpha = 0.65f),
+                            start = Offset(width * 0.12f, height * scanProgress),
+                            end = Offset(width * 0.88f, height * scanProgress),
+                            strokeWidth = 5f,
+                            cap = StrokeCap.Round
+                        )
+
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.08f),
+                            topLeft = Offset(centerX - truckWidth / 2f, truckTop),
+                            size = Size(truckWidth, truckHeight),
+                            cornerRadius = CornerRadius(28f, 28f)
+                        )
+                        drawRoundRect(
+                            color = Amber.copy(alpha = 0.72f),
+                            topLeft = Offset(centerX - truckWidth / 2.4f, truckTop + truckHeight * 0.16f),
+                            size = Size(truckWidth / 1.2f, truckHeight * 0.48f),
+                            cornerRadius = CornerRadius(22f, 22f)
+                        )
+                        drawRoundRect(
+                            color = Mint.copy(alpha = 0.95f),
+                            topLeft = Offset(centerX - truckWidth / 2f - 10f, truckTop + truckHeight * 0.82f),
+                            size = Size(20f, 20f),
+                            cornerRadius = CornerRadius(10f, 10f)
+                        )
+                        drawRoundRect(
+                            color = Mint.copy(alpha = 0.95f),
+                            topLeft = Offset(centerX + truckWidth / 2f - 10f, truckTop + truckHeight * 0.82f),
+                            size = Size(20f, 20f),
+                            cornerRadius = CornerRadius(10f, 10f)
+                        )
+
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.12f * pulseAlpha),
+                            radius = 46f + 22f * pulseAlpha,
+                            center = Offset(droneX, droneY)
+                        )
+                        drawCircle(
+                            color = CyanGlow.copy(alpha = 0.9f),
+                            radius = 16f,
+                            center = Offset(droneX, droneY)
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(droneX - 24f, droneY),
+                            end = Offset(droneX + 24f, droneY),
+                            strokeWidth = 4f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(droneX, droneY - 18f),
+                            end = Offset(droneX, droneY + 18f),
+                            strokeWidth = 4f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = CyanGlow.copy(alpha = 0.55f),
+                            start = Offset(droneX, droneY + 14f),
+                            end = Offset(centerX, truckTop - 14f),
+                            strokeWidth = 3f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
+                        )
+
+                        listOf(leftTarget, rightTarget, rearTarget).forEachIndexed { index, target ->
+                            val alertColor = when (index) {
+                                0 -> Coral
+                                1 -> Amber
+                                else -> Mint
+                            }
+                            drawRoundRect(
+                                color = alertColor.copy(alpha = 0.9f),
+                                topLeft = Offset(target.x - 30f, target.y - 24f),
+                                size = Size(60f, 48f),
+                                cornerRadius = CornerRadius(12f, 12f),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                            )
+                            drawCircle(
+                                color = alertColor.copy(alpha = 0.18f + 0.18f * pulseAlpha),
+                                radius = 28f + 10f * pulseAlpha,
+                                center = target
+                            )
+                        }
+                    } else {
+                        val groundY = height * 0.78f
+                        val truckSideLeft = width * 0.26f
+                        val truckSideTop = height * 0.44f
+                        val personX = width * 0.18f
+                        val coneX = width * 0.78f
+
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.18f),
+                            start = Offset(width * 0.1f, groundY),
+                            end = Offset(width * 0.9f, groundY),
+                            strokeWidth = 4f
+                        )
+                        drawLine(
+                            color = CyanGlow.copy(alpha = 0.65f),
+                            start = Offset(width * 0.14f, height * scanProgress),
+                            end = Offset(width * 0.86f, height * scanProgress),
+                            strokeWidth = 5f,
+                            cap = StrokeCap.Round
+                        )
+                        drawRoundRect(
+                            color = Amber.copy(alpha = 0.76f),
+                            topLeft = Offset(truckSideLeft, truckSideTop),
+                            size = Size(width * 0.42f, height * 0.18f),
+                            cornerRadius = CornerRadius(26f, 26f)
+                        )
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.12f),
+                            topLeft = Offset(truckSideLeft + width * 0.26f, truckSideTop - height * 0.06f),
+                            size = Size(width * 0.12f, height * 0.08f),
+                            cornerRadius = CornerRadius(22f, 22f)
+                        )
+                        drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.08f, truckSideTop + height * 0.19f))
+                        drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.34f, truckSideTop + height * 0.19f))
+
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.12f * pulseAlpha),
+                            radius = 46f + 20f * pulseAlpha,
+                            center = Offset(width * 0.38f, height * 0.18f)
+                        )
+                        drawCircle(CyanGlow.copy(alpha = 0.9f), 16f, Offset(width * 0.38f, height * 0.18f))
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(width * 0.35f, height * 0.18f),
+                            end = Offset(width * 0.41f, height * 0.18f),
+                            strokeWidth = 4f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(width * 0.38f, height * 0.15f),
+                            end = Offset(width * 0.38f, height * 0.21f),
+                            strokeWidth = 4f,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = CyanGlow.copy(alpha = 0.55f),
+                            start = Offset(width * 0.38f, height * 0.21f),
+                            end = Offset(width * 0.48f, truckSideTop - 16f),
+                            strokeWidth = 3f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
+                        )
+
+                        drawRoundRect(
+                            color = Coral.copy(alpha = 0.92f),
+                            topLeft = Offset(personX - 28f, height * 0.5f),
+                            size = Size(56f, 92f),
+                            cornerRadius = CornerRadius(16f, 16f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
+                        )
+                        drawCircle(
+                            color = Amber.copy(alpha = 0.92f),
+                            radius = 28f,
+                            center = Offset(coneX, height * 0.6f)
+                        )
+                        drawCircle(
+                            color = Mint.copy(alpha = 0.2f + 0.16f * pulseAlpha),
+                            radius = 30f + 8f * pulseAlpha,
+                            center = Offset(width * 0.72f, groundY - 14f)
+                        )
+                    }
+                }
+
+                AssistTargetBadge(
+                    title = "人员",
+                    detail = leftTargetStatus,
+                    color = Coral,
+                    modifier = Modifier
+                        .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopStart else Alignment.CenterStart)
+                        .offset(
+                            x = if (viewMode == AssistViewMode.TopDown) 42.dp else 18.dp,
+                            y = if (viewMode == AssistViewMode.TopDown) 132.dp else 18.dp
+                        )
+                )
+                AssistTargetBadge(
+                    title = "锥桶",
+                    detail = rightTargetStatus,
+                    color = Amber,
+                    modifier = Modifier
+                        .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopEnd else Alignment.CenterEnd)
+                        .offset(
+                            x = if (viewMode == AssistViewMode.TopDown) (-44).dp else (-18).dp,
+                            y = if (viewMode == AssistViewMode.TopDown) 168.dp else 56.dp
+                        )
+                )
+                AssistTargetBadge(
+                    title = "尾部余量",
+                    detail = rearTargetStatus,
+                    color = Mint,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (-24).dp)
+                )
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatusPill("DRONE LINK", Color.White.copy(alpha = 0.14f))
+                    Text(
+                        text = "AI 感知模拟中",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Text(
+                        text = if (viewMode == AssistViewMode.TopDown) {
+                            "检测目标：无人机 1 / 货车 1 / 人员与物体 3"
+                        } else {
+                            "检测目标：侧视跟踪 / 货车轮廓 / 周边风险 3"
+                        },
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "货车稳定性 $truckStatus",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (viewMode == AssistViewMode.TopDown) "无人机正在执行侧前方巡检轨迹" else "侧视感知正在追踪车身、人员与后方空间",
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(14.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = NightCard.copy(alpha = 0.84f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "目标态势",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        PerceptionLegendRow("货车", truckStatus, truckStatusColor)
+                        PerceptionLegendRow("左侧目标", leftTargetStatus, Coral)
+                        PerceptionLegendRow("右侧目标", rightTargetStatus, Amber)
+                        PerceptionLegendRow("后方余量", rearTargetStatus, Mint)
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatusPill("货车 1", Amber.copy(alpha = 0.16f))
+                StatusPill("无人机 1", CyanGlow.copy(alpha = 0.18f))
+                StatusPill("人员 1", Coral.copy(alpha = 0.14f))
+                StatusPill("物体 2", Mint.copy(alpha = 0.14f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistSummaryRow(state: ZhiGuUiState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        AssistMetricCard("识别目标", "4", CyanGlow)
+        AssistMetricCard("安全余量", if (state.missionProgress >= 75) "0.8m" else "0.4m", Mint)
+        AssistMetricCard("无人机速度", "1.4m/s", OceanBlue)
+        AssistMetricCard("货车状态", if (state.findings.count { !it.resolved } > 0) "预警" else "稳定", Amber)
+    }
+}
+
+@Composable
+private fun AssistMetricCard(title: String, value: String, accent: Color) {
+    Card(
+        modifier = Modifier.width(148.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = Slate)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun AssistTargetListCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+    val targetItems = listOf(
+        AssistTargetItem("左侧人员", if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中", Coral, Icons.Outlined.Person),
+        AssistTargetItem("右侧障碍物", if (state.missionProgress >= 75) "锥桶区域，建议保持距离" else "边界检测中", Amber, Icons.Outlined.Construction),
+        AssistTargetItem("尾部余量", if (state.missionProgress >= 100) "尾部空间充足" else "尾部需复核", Mint, Icons.Outlined.SwapHoriz),
+        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行" else "侧视下保持低速平稳跟踪", CyanGlow, Icons.Outlined.Air),
+        AssistTargetItem("货车轮廓", "车身边界已锁定，保持持续跟踪", OceanBlue, Icons.Outlined.LocalShipping)
+    )
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            SectionHeader("目标列表", "周边目标识别结果")
+            targetItems.forEach { item ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(item.color.copy(alpha = 0.14f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.title,
+                                tint = item.color,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(item.title, style = MaterialTheme.typography.titleMedium)
+                            Text(item.detail, style = MaterialTheme.typography.bodyMedium, color = Slate)
+                        }
+                    }
+                    StatusPill("在线", item.color.copy(alpha = 0.14f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistGuidanceCard(state: ZhiGuUiState, viewMode: AssistViewMode) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            SectionHeader("辅助策略", "演示建议")
+            DashboardStatusLine("当前任务", state.missionStatus)
+            DashboardStatusLine("风险数量", "${state.findings.count { !it.resolved }} 项")
+            DashboardStatusLine("显示视角", viewMode.label)
+            DashboardStatusLine("建议播报", if (state.missionProgress < 50) "说明无人机正在识别周边人员与物体" else "说明系统已锁定货车周边关键目标")
+            Text(
+                text = "这个页面是纯展示型辅助感知屏，不依赖真实算法输入，适合在比赛现场稳定模拟类似智能驾驶的感知界面效果。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Slate,
+                textAlign = TextAlign.Start
+            )
+        }
+    }
+}
+
+private data class AssistTargetItem(
+    val title: String,
+    val detail: String,
+    val color: Color,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
+@Composable
+private fun AssistTargetBadge(
+    title: String,
+    detail: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = NightCard.copy(alpha = 0.92f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                )
+                Text(title, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(detail, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun PerceptionLegendRow(label: String, value: String, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Text(label, color = Color.White.copy(alpha = 0.84f), style = MaterialTheme.typography.bodyMedium)
+        }
+        Text(value, color = Color.White, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

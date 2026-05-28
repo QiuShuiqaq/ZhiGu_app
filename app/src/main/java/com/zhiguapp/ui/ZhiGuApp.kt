@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.DrawableRes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -16,6 +17,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -63,6 +66,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.Image
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
@@ -89,9 +93,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
@@ -99,6 +107,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.painterResource
+import com.zhiguapp.R
 import com.zhiguapp.dji.DjiBootstrap
 import com.zhiguapp.ui.theme.Amber
 import com.zhiguapp.ui.theme.Coral
@@ -124,8 +134,107 @@ private data class StatusMetric(
     val accent: Color
 )
 
+private data class Point3D(
+    val x: Float,
+    val y: Float,
+    val z: Float
+)
+
+private data class ProjectedPoint(
+    val offset: Offset,
+    val depth: Float
+)
+
+private data class DemoTruckProfile(
+    val id: String,
+    val label: String,
+    val specLabel: String,
+    val vehicleType: String,
+    val totalLengthMeters: Float,
+    val cargoLengthMeters: Float,
+    val cargoWidthMeters: Float,
+    val cargoHeightMeters: Float,
+    val cabLengthMeters: Float,
+    val articulated: Boolean,
+    val trailerGapMeters: Float,
+    val axleLayout: List<Float>
+)
+
+private data class AssistScenePreset(
+    @DrawableRes val imageRes: Int,
+    val title: String,
+    val subtitle: String,
+    val tags: List<String>
+)
+
+private val demoTruckProfiles = listOf(
+    DemoTruckProfile(
+        id = "light_42",
+        label = "4.2m 轻卡",
+        specLabel = "总长 5.99m / 栏板货厢 4.2m",
+        vehicleType = "轻型货车",
+        totalLengthMeters = 5.99f,
+        cargoLengthMeters = 4.2f,
+        cargoWidthMeters = 2.1f,
+        cargoHeightMeters = 1.8f,
+        cabLengthMeters = 1.65f,
+        articulated = false,
+        trailerGapMeters = 0f,
+        axleLayout = listOf(-1.0f, 0.95f)
+    ),
+    DemoTruckProfile(
+        id = "medium_76",
+        label = "7.6m 中卡",
+        specLabel = "总长 9.2m / 厢体 7.6m",
+        vehicleType = "专用货车",
+        totalLengthMeters = 9.2f,
+        cargoLengthMeters = 7.6f,
+        cargoWidthMeters = 2.45f,
+        cargoHeightMeters = 2.6f,
+        cabLengthMeters = 1.9f,
+        articulated = false,
+        trailerGapMeters = 0f,
+        axleLayout = listOf(-1.35f, 0.3f, 1.6f)
+    ),
+    DemoTruckProfile(
+        id = "box_96",
+        label = "9.6m 厢货",
+        specLabel = "总长 11.2m / 厢体 9.6m",
+        vehicleType = "厢式货车",
+        totalLengthMeters = 11.2f,
+        cargoLengthMeters = 9.6f,
+        cargoWidthMeters = 2.45f,
+        cargoHeightMeters = 2.8f,
+        cabLengthMeters = 2.0f,
+        articulated = false,
+        trailerGapMeters = 0f,
+        axleLayout = listOf(-1.5f, 0.5f, 1.95f)
+    ),
+    DemoTruckProfile(
+        id = "semi_1375",
+        label = "13.75m 半挂",
+        specLabel = "总长 17.1m / 挂车板长 13.75m",
+        vehicleType = "牵引车",
+        totalLengthMeters = 17.1f,
+        cargoLengthMeters = 13.75f,
+        cargoWidthMeters = 2.55f,
+        cargoHeightMeters = 3.0f,
+        cabLengthMeters = 2.35f,
+        articulated = true,
+        trailerGapMeters = 1.15f,
+        axleLayout = listOf(-2.0f, -1.15f, 1.45f, 1.8f, 2.15f)
+    )
+)
+
+private fun truckProfileForVehicleType(vehicleType: String): DemoTruckProfile {
+    return demoTruckProfiles.firstOrNull { profile ->
+        profile.vehicleType == vehicleType || profile.label == vehicleType
+    } ?: demoTruckProfiles.last()
+}
+
 private enum class AssistViewMode(val label: String) {
-    TopDown("俯视"),
+    Overview("总览"),
+    TopDown("顶视"),
     Side("侧视")
 }
 
@@ -481,10 +590,12 @@ private fun LiveFeedsCard(state: ZhiGuUiState) {
 
 @Composable
 private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
-    var viewMode by remember { mutableStateOf(AssistViewMode.TopDown) }
+    var viewMode by remember { mutableStateOf(AssistViewMode.Overview) }
     var demoMode by remember { mutableStateOf(AssistDemoMode.Normal) }
     var themeMode by remember { mutableStateOf(AssistThemeMode.Night) }
     var autoPlay by remember { mutableStateOf(false) }
+    var truckProfileId by remember(state.vehicleType) { mutableStateOf(truckProfileForVehicleType(state.vehicleType).id) }
+    val selectedTruckProfile = demoTruckProfiles.firstOrNull { it.id == truckProfileId } ?: demoTruckProfiles.last()
 
     LaunchedEffect(autoPlay, demoMode) {
         if (!autoPlay) return@LaunchedEffect
@@ -516,10 +627,12 @@ private fun AssistScreen(state: ZhiGuUiState, padding: PaddingValues) {
                 themeMode = themeMode,
                 onThemeModeChange = { themeMode = it },
                 autoPlay = autoPlay,
-                onAutoPlayToggle = { autoPlay = !autoPlay }
+                onAutoPlayToggle = { autoPlay = !autoPlay },
+                selectedTruckProfile = selectedTruckProfile,
+                onTruckProfileChange = { truckProfileId = it.id }
             )
         }
-        item { AssistSceneCard(state, viewMode, demoMode, themeMode) }
+        item { AssistScene3DCard(state, viewMode, demoMode, themeMode, selectedTruckProfile) }
         item { AssistSummaryRow(state, demoMode) }
         item { AssistTargetListCard(state, viewMode, demoMode) }
         item { AssistGuidanceCard(state, viewMode, demoMode, themeMode) }
@@ -558,19 +671,19 @@ private fun AssistHero(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatusPill("AUX DRIVE VIEW", primaryTextColor.copy(alpha = 0.14f))
-                    StatusPill("目标 4", primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill("REAL SCENE", primaryTextColor.copy(alpha = 0.14f))
+                    StatusPill("系固点 3", primaryTextColor.copy(alpha = 0.14f))
                     StatusPill(viewMode.label, primaryTextColor.copy(alpha = 0.14f))
                     StatusPill(demoMode.label, primaryTextColor.copy(alpha = 0.14f))
                     StatusPill(themeMode.label, primaryTextColor.copy(alpha = 0.14f))
                 }
                 Text(
-                    text = "辅助感知屏",
+                    text = "辅助系固视图",
                     color = primaryTextColor,
                     style = MaterialTheme.typography.headlineLarge
                 )
                 Text(
-                    text = "模拟展示货车周边人员、障碍物与无人机巡检态势，风格接近智能驾驶感知大屏。",
+                    text = "用实景化视角展示半挂货物、绑带走向和车侧系固点位置。",
                     color = secondaryTextColor,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -594,7 +707,9 @@ private fun AssistControlCard(
     themeMode: AssistThemeMode,
     onThemeModeChange: (AssistThemeMode) -> Unit,
     autoPlay: Boolean,
-    onAutoPlayToggle: () -> Unit
+    onAutoPlayToggle: () -> Unit,
+    selectedTruckProfile: DemoTruckProfile,
+    onTruckProfileChange: (DemoTruckProfile) -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -651,6 +766,19 @@ private fun AssistControlCard(
                     )
                 }
             }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("演示车型", style = MaterialTheme.typography.titleMedium)
+                Text(selectedTruckProfile.specLabel, style = MaterialTheme.typography.bodyMedium, color = Slate)
+            }
+            AssistControlSection(title = "货车长度") {
+                demoTruckProfiles.forEach { profile ->
+                    FilterChip(
+                        label = profile.label,
+                        selected = profile.id == selectedTruckProfile.id,
+                        onClick = { onTruckProfileChange(profile) }
+                    )
+                }
+            }
             AssistControlSection(title = "感知主题") {
                 AssistThemeMode.entries.forEach { mode ->
                     FilterChip(
@@ -682,12 +810,13 @@ private fun AssistSceneCard(
     state: ZhiGuUiState,
     viewMode: AssistViewMode,
     demoMode: AssistDemoMode,
-    themeMode: AssistThemeMode
+    themeMode: AssistThemeMode,
+    truckProfile: DemoTruckProfile
 ) {
     val sweepTransition = rememberInfiniteTransition(label = "perception_scene")
     val scanProgress by sweepTransition.animateFloat(
-        initialValue = 0.16f,
-        targetValue = 0.84f,
+        initialValue = 0.12f,
+        targetValue = 0.88f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -713,59 +842,64 @@ private fun AssistSceneCard(
         label = "pulse_alpha"
     )
 
-    val unresolvedCount = when (demoMode) {
-        AssistDemoMode.Normal -> state.findings.count { !it.resolved }
-        AssistDemoMode.Approaching -> maxOf(3, state.findings.count { !it.resolved })
-        AssistDemoMode.SafePass -> 0
+    val routeNodes = state.routeNodes
+    val activeNodeIndex = routeNodes.indexOfFirst { it.status == RouteNodeStatus.Active }.let { if (it == -1) 0 else it }
+    val completedCount = routeNodes.count { it.status == RouteNodeStatus.Completed }
+    val fixingProgress = (completedCount + scanProgress.coerceIn(0.15f, 0.95f)) / routeNodes.size.toFloat()
+    val strapTension = when (demoMode) {
+        AssistDemoMode.Normal -> "8.4kN"
+        AssistDemoMode.Approaching -> "7.2kN"
+        AssistDemoMode.SafePass -> "9.1kN"
     }
-    val truckStatus = if (unresolvedCount > 0) "待复核" else "稳定"
-    val truckStatusColor = if (truckStatus == "稳定") Mint else Amber
-    val leftTargetStatus = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 50) "已识别" else "扫描中"
-        AssistDemoMode.Approaching -> "逼近"
-        AssistDemoMode.SafePass -> "通过"
+    val fixingAngle = when (demoMode) {
+        AssistDemoMode.Normal -> "46°"
+        AssistDemoMode.Approaching -> "31°"
+        AssistDemoMode.SafePass -> "52°"
     }
-    val rightTargetStatus = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 75) "接近" else "监测中"
-        AssistDemoMode.Approaching -> "危险"
-        AssistDemoMode.SafePass -> "远离"
+    val anchorSpacing = when (demoMode) {
+        AssistDemoMode.Normal -> "1.0m"
+        AssistDemoMode.Approaching -> "1.3m"
+        AssistDemoMode.SafePass -> "0.9m"
     }
-    val rearTargetStatus = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 100) "安全" else "占用"
-        AssistDemoMode.Approaching -> "紧张"
-        AssistDemoMode.SafePass -> "安全"
+    val cargoStability = when (demoMode) {
+        AssistDemoMode.Normal -> "重心覆盖中"
+        AssistDemoMode.Approaching -> "尾部需补强"
+        AssistDemoMode.SafePass -> "固定稳定"
     }
-    val leftDistance = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 50) "1.2m" else "2.4m"
-        AssistDemoMode.Approaching -> "0.6m"
-        AssistDemoMode.SafePass -> "2.8m"
-    }
-    val rightDistance = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 75) "0.8m" else "1.6m"
-        AssistDemoMode.Approaching -> "0.5m"
-        AssistDemoMode.SafePass -> "2.2m"
-    }
-    val rearDistance = when (demoMode) {
-        AssistDemoMode.Normal -> if (state.missionProgress >= 100) "1.5m" else "0.4m"
-        AssistDemoMode.Approaching -> "0.3m"
-        AssistDemoMode.SafePass -> "1.8m"
+    val truckStatusColor = when (demoMode) {
+        AssistDemoMode.SafePass -> Mint
+        AssistDemoMode.Approaching -> Coral
+        AssistDemoMode.Normal -> Amber
     }
     val currentRiskLevel = when {
         demoMode == AssistDemoMode.Approaching -> AssistRiskLevel.Alert
         demoMode == AssistDemoMode.SafePass -> AssistRiskLevel.Safe
-        unresolvedCount >= 3 -> AssistRiskLevel.Alert
-        unresolvedCount >= 1 -> AssistRiskLevel.Notice
+        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
+        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
         else -> AssistRiskLevel.Safe
     }
-    val sceneBackground = if (themeMode == AssistThemeMode.Night) {
-        listOf(InkBlue, OceanBlue.copy(alpha = 0.92f), Night)
-    } else {
-        listOf(Color(0xFFEAF4FF), Color(0xFFB7D8FF), Color(0xFF78AFFF))
-    }
-    val overlayText = if (themeMode == AssistThemeMode.Night) Color.White else InkBlue
-    val overlaySubText = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.82f) else InkBlue.copy(alpha = 0.72f)
+    val overlayText = Color(0xFF1E2A3A)
     val panelBackground = if (themeMode == AssistThemeMode.Night) NightCard.copy(alpha = 0.84f) else Color.White.copy(alpha = 0.82f)
-    val trackLineColor = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.18f) else InkBlue.copy(alpha = 0.18f)
+    val scenePreset = when (viewMode) {
+        AssistViewMode.Overview -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_overview,
+            title = "总览镜头",
+            subtitle = "看整车、货物排布与主绑带覆盖路径",
+            tags = listOf("高位总览", "平板半挂", "托盘货物")
+        )
+        AssistViewMode.TopDown -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_top,
+            title = "顶视走带",
+            subtitle = "看绑带如何压过货面与篷布",
+            tags = listOf("顶部走带", "压带方向", "覆盖范围")
+        )
+        AssistViewMode.Side -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_side_points,
+            title = "侧视点位",
+            subtitle = "看车侧系固点、落点与层高关系",
+            tags = listOf("侧边系固点", "落点位置", "货物层高")
+        )
+    }
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -775,392 +909,138 @@ private fun AssistSceneCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SectionHeader("态势图", "智能辅助驾驶风格示意")
+            SectionHeader("系固态势", "半实景展示固定方式、点位与走带逻辑")
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(456.dp)
+                    .height(460.dp)
                     .clip(RoundedCornerShape(22.dp))
-                    .background(Brush.verticalGradient(colors = sceneBackground))
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val width = size.width
-                    val height = size.height
-                    val laneLeft = width * 0.22f
-                    val laneRight = width * 0.78f
-                    val centerX = width * 0.5f
-                    val truckTop = height * 0.5f
-                    val truckWidth = width * 0.2f
-                    val truckHeight = height * 0.24f
-                    val droneX = width * (0.28f + 0.44f * droneOffset)
-                    val droneY = height * (0.14f + 0.03f * kotlin.math.sin(droneOffset * Math.PI).toFloat())
-                    val leftTarget = Offset(width * 0.24f, height * 0.34f)
-                    val rightTarget = Offset(width * 0.77f, height * 0.4f)
-                    val rearTarget = Offset(width * 0.5f, height * 0.84f)
-                    val supportTarget = Offset(width * 0.14f, height * 0.72f)
-                    val palletTarget = Offset(width * 0.84f, height * 0.72f)
-
-                    if (viewMode == AssistViewMode.TopDown) {
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.08f),
-                            topLeft = Offset(width * 0.08f, height * 0.08f),
-                            size = Size(width * 0.84f, height * 0.82f),
-                            cornerRadius = CornerRadius(36f, 36f)
-                        )
-                        drawLine(
-                            color = trackLineColor,
-                            start = Offset(laneLeft, height * 0.06f),
-                            end = Offset(laneLeft, height * 0.94f),
-                            strokeWidth = 4f,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f))
-                        )
-                        drawLine(
-                            color = trackLineColor,
-                            start = Offset(laneRight, height * 0.06f),
-                            end = Offset(laneRight, height * 0.94f),
-                            strokeWidth = 4f,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f))
-                        )
-                        drawLine(
-                            color = CyanGlow.copy(alpha = 0.65f),
-                            start = Offset(width * 0.12f, height * scanProgress),
-                            end = Offset(width * 0.88f, height * scanProgress),
-                            strokeWidth = 5f,
-                            cap = StrokeCap.Round
-                        )
-
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.05f),
-                            topLeft = Offset(width * 0.12f, height * 0.14f),
-                            size = Size(width * 0.1f, height * 0.16f),
-                            cornerRadius = CornerRadius(20f, 20f)
-                        )
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.05f),
-                            topLeft = Offset(width * 0.78f, height * 0.16f),
-                            size = Size(width * 0.08f, height * 0.12f),
-                            cornerRadius = CornerRadius(18f, 18f)
-                        )
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.05f),
-                            topLeft = Offset(width * 0.74f, height * 0.68f),
-                            size = Size(width * 0.12f, height * 0.1f),
-                            cornerRadius = CornerRadius(18f, 18f)
-                        )
-
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.1f),
-                            topLeft = Offset(centerX - truckWidth / 2f, truckTop),
-                            size = Size(truckWidth, truckHeight),
-                            cornerRadius = CornerRadius(28f, 28f)
-                        )
-                        drawRoundRect(
-                            color = Amber.copy(alpha = 0.72f),
-                            topLeft = Offset(centerX - truckWidth / 2.4f, truckTop + truckHeight * 0.16f),
-                            size = Size(truckWidth / 1.2f, truckHeight * 0.48f),
-                            cornerRadius = CornerRadius(22f, 22f)
-                        )
-                        drawRoundRect(
-                            color = Mint.copy(alpha = 0.95f),
-                            topLeft = Offset(centerX - truckWidth / 2f - 10f, truckTop + truckHeight * 0.82f),
-                            size = Size(20f, 20f),
-                            cornerRadius = CornerRadius(10f, 10f)
-                        )
-                        drawRoundRect(
-                            color = Mint.copy(alpha = 0.95f),
-                            topLeft = Offset(centerX + truckWidth / 2f - 10f, truckTop + truckHeight * 0.82f),
-                            size = Size(20f, 20f),
-                            cornerRadius = CornerRadius(10f, 10f)
-                        )
-
-                        drawCircle(
-                            color = overlayText.copy(alpha = 0.12f * pulseAlpha),
-                            radius = 46f + 22f * pulseAlpha,
-                            center = Offset(droneX, droneY)
-                        )
-                        drawCircle(
-                            color = CyanGlow.copy(alpha = 0.9f),
-                            radius = 16f,
-                            center = Offset(droneX, droneY)
-                        )
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.9f),
-                            start = Offset(droneX - 24f, droneY),
-                            end = Offset(droneX + 24f, droneY),
-                            strokeWidth = 4f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.9f),
-                            start = Offset(droneX, droneY - 18f),
-                            end = Offset(droneX, droneY + 18f),
-                            strokeWidth = 4f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = CyanGlow.copy(alpha = 0.55f),
-                            start = Offset(droneX, droneY + 14f),
-                            end = Offset(centerX, truckTop - 14f),
-                            strokeWidth = 3f,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
-                        )
-
-                        listOf(leftTarget, rightTarget, rearTarget).forEachIndexed { index, target ->
-                            val alertColor = when (index) {
-                                0 -> Coral
-                                1 -> Amber
-                                else -> Mint
-                            }
-                            drawRoundRect(
-                                color = alertColor.copy(alpha = 0.9f),
-                                topLeft = Offset(target.x - 30f, target.y - 24f),
-                                size = Size(60f, 48f),
-                                cornerRadius = CornerRadius(12f, 12f),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                            )
-                            drawCircle(
-                                color = alertColor.copy(alpha = 0.18f + 0.18f * pulseAlpha),
-                                radius = 28f + 10f * pulseAlpha,
-                                center = target
-                            )
-                            drawCircle(
-                                color = alertColor.copy(alpha = 0.4f * pulseAlpha),
-                                radius = 42f + 12f * pulseAlpha,
-                                center = target
-                            )
-                        }
-
-                        drawRoundRect(
-                            color = OceanBlue.copy(alpha = 0.88f),
-                            topLeft = Offset(supportTarget.x - 26f, supportTarget.y - 26f),
-                            size = Size(52f, 52f),
-                            cornerRadius = CornerRadius(16f, 16f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                        drawRoundRect(
-                            color = Mint.copy(alpha = 0.88f),
-                            topLeft = Offset(palletTarget.x - 30f, palletTarget.y - 20f),
-                            size = Size(60f, 40f),
-                            cornerRadius = CornerRadius(12f, 12f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                    } else {
-                        val groundY = height * 0.78f
-                        val truckSideLeft = width * 0.24f
-                        val truckSideTop = height * 0.42f
-                        val personX = width * 0.18f
-                        val coneX = width * 0.78f
-                        val fanCenter = Offset(width * 0.74f, truckSideTop + height * 0.09f)
-                        val palletX = width * 0.86f
-
-                        drawLine(
-                            color = trackLineColor,
-                            start = Offset(width * 0.1f, groundY),
-                            end = Offset(width * 0.9f, groundY),
-                            strokeWidth = 4f
-                        )
-                        drawLine(
-                            color = CyanGlow.copy(alpha = 0.65f),
-                            start = Offset(width * 0.14f, height * scanProgress),
-                            end = Offset(width * 0.86f, height * scanProgress),
-                            strokeWidth = 5f,
-                            cap = StrokeCap.Round
-                        )
-                        drawRoundRect(
-                            color = Amber.copy(alpha = 0.76f),
-                            topLeft = Offset(truckSideLeft, truckSideTop),
-                            size = Size(width * 0.42f, height * 0.18f),
-                            cornerRadius = CornerRadius(26f, 26f)
-                        )
-                        drawRoundRect(
-                            color = overlayText.copy(alpha = 0.12f),
-                            topLeft = Offset(truckSideLeft + width * 0.26f, truckSideTop - height * 0.06f),
-                            size = Size(width * 0.12f, height * 0.08f),
-                            cornerRadius = CornerRadius(22f, 22f)
-                        )
-                        drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.08f, truckSideTop + height * 0.19f))
-                        drawCircle(Mint, 16f, Offset(truckSideLeft + width * 0.34f, truckSideTop + height * 0.19f))
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.45f),
-                            start = Offset(truckSideLeft + width * 0.44f, truckSideTop + height * 0.09f),
-                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
-                            strokeWidth = 5f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.45f),
-                            start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.06f),
-                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
-                            strokeWidth = 5f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.45f),
-                            start = Offset(truckSideLeft + width * 0.48f, truckSideTop + height * 0.12f),
-                            end = Offset(truckSideLeft + width * 0.5f, truckSideTop + height * 0.09f),
-                            strokeWidth = 5f,
-                            cap = StrokeCap.Round
-                        )
-
-                        drawCircle(
-                            color = overlayText.copy(alpha = 0.12f * pulseAlpha),
-                            radius = 46f + 20f * pulseAlpha,
-                            center = Offset(width * 0.38f, height * 0.18f)
-                        )
-                        drawCircle(CyanGlow.copy(alpha = 0.9f), 16f, Offset(width * 0.38f, height * 0.18f))
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.9f),
-                            start = Offset(width * 0.35f, height * 0.18f),
-                            end = Offset(width * 0.41f, height * 0.18f),
-                            strokeWidth = 4f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = overlayText.copy(alpha = 0.9f),
-                            start = Offset(width * 0.38f, height * 0.15f),
-                            end = Offset(width * 0.38f, height * 0.21f),
-                            strokeWidth = 4f,
-                            cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = CyanGlow.copy(alpha = 0.55f),
-                            start = Offset(width * 0.38f, height * 0.21f),
-                            end = Offset(width * 0.48f, truckSideTop - 16f),
-                            strokeWidth = 3f,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
-                        )
-
-                        drawRoundRect(
-                            color = Coral.copy(alpha = 0.92f),
-                            topLeft = Offset(personX - 28f, height * 0.5f),
-                            size = Size(56f, 92f),
-                            cornerRadius = CornerRadius(16f, 16f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                        drawCircle(
-                            color = Amber.copy(alpha = 0.92f),
-                            radius = 28f,
-                            center = Offset(coneX, height * 0.6f)
-                        )
-                        drawCircle(
-                            color = Mint.copy(alpha = 0.2f + 0.16f * pulseAlpha),
-                            radius = 30f + 8f * pulseAlpha,
-                            center = Offset(width * 0.72f, groundY - 14f)
-                        )
-                        drawRoundRect(
-                            color = Mint.copy(alpha = 0.82f),
-                            topLeft = Offset(palletX - 26f, groundY - 58f),
-                            size = Size(52f, 36f),
-                            cornerRadius = CornerRadius(10f, 10f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                        drawRoundRect(
-                            color = OceanBlue.copy(alpha = 0.82f),
-                            topLeft = Offset(width * 0.08f, groundY - 46f),
-                            size = Size(32f, 52f),
-                            cornerRadius = CornerRadius(10f, 10f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                        drawArc(
-                            color = Coral.copy(alpha = 0.16f),
-                            startAngle = -36f,
-                            sweepAngle = 72f,
-                            useCenter = true,
-                            topLeft = Offset(fanCenter.x - 110f, fanCenter.y - 110f),
-                            size = Size(220f, 220f),
-                            style = Fill
-                        )
-                        drawArc(
-                            color = Coral.copy(alpha = 0.42f),
-                            startAngle = -28f,
-                            sweepAngle = 56f,
-                            useCenter = false,
-                            topLeft = Offset(fanCenter.x - 110f, fanCenter.y - 110f),
-                            size = Size(220f, 220f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f)
-                        )
-                    }
-                }
-
-                AssistTargetBadge(
-                    title = "人员",
-                    detail = "$leftTargetStatus · $leftDistance",
-                    color = Coral,
-                    modifier = Modifier
-                        .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopStart else Alignment.CenterStart)
-                        .offset(
-                            x = if (viewMode == AssistViewMode.TopDown) 42.dp else 18.dp,
-                            y = if (viewMode == AssistViewMode.TopDown) 132.dp else 18.dp
-                        )
-                )
-                AssistTargetBadge(
-                    title = "锥桶",
-                    detail = "$rightTargetStatus · $rightDistance",
-                    color = Amber,
-                    modifier = Modifier
-                        .align(if (viewMode == AssistViewMode.TopDown) Alignment.TopEnd else Alignment.CenterEnd)
-                        .offset(
-                            x = if (viewMode == AssistViewMode.TopDown) (-44).dp else (-18).dp,
-                            y = if (viewMode == AssistViewMode.TopDown) 168.dp else 56.dp
-                        )
-                )
-                AssistTargetBadge(
-                    title = "尾部余量",
-                    detail = "$rearTargetStatus · $rearDistance",
-                    color = Mint,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = (-24).dp)
+                Image(
+                    painter = painterResource(id = scenePreset.imageRes),
+                    contentDescription = scenePreset.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
 
-                Column(
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    StatusPill("DRONE LINK", overlayText.copy(alpha = 0.14f))
-                    Text(
-                        text = "AI 感知模拟中",
-                        color = overlayText,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Text(
-                        text = if (viewMode == AssistViewMode.TopDown) {
-                            "检测目标：无人机 1 / 货车 1 / 人员与物体 5"
-                        } else {
-                            "检测目标：侧视跟踪 / 货车轮廓 / 周边风险 5"
-                        },
-                        color = overlaySubText,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    StatusPill(scenePreset.title, Color.Black.copy(alpha = 0.38f))
+                    StatusPill(truckProfile.label, Color.Black.copy(alpha = 0.38f))
                 }
 
-                Column(
+                SceneMarker(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "货车稳定性 $truckStatus",
-                        color = overlayText,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = if (viewMode == AssistViewMode.TopDown) "无人机正在执行侧前方巡检轨迹，支撑柱与托盘同步识别" else "侧视感知正在追踪车身、人员、托盘与后方空间",
-                        color = overlaySubText,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
+                        .align(
+                            when (viewMode) {
+                                AssistViewMode.Overview -> Alignment.CenterStart
+                                AssistViewMode.TopDown -> Alignment.TopCenter
+                                AssistViewMode.Side -> Alignment.CenterEnd
+                            }
+                        )
+                        .offset(
+                            x = when (viewMode) {
+                                AssistViewMode.Overview -> 28.dp
+                                AssistViewMode.TopDown -> 0.dp
+                                AssistViewMode.Side -> (-38).dp
+                            },
+                            y = when (viewMode) {
+                                AssistViewMode.Overview -> 44.dp
+                                AssistViewMode.TopDown -> 36.dp
+                                AssistViewMode.Side -> (-18).dp
+                            }
+                        ),
+                    label = "起点",
+                    color = Coral
+                )
+                SceneMarker(
+                    modifier = Modifier
+                        .align(
+                            when (viewMode) {
+                                AssistViewMode.Overview -> Alignment.Center
+                                AssistViewMode.TopDown -> Alignment.Center
+                                AssistViewMode.Side -> Alignment.Center
+                            }
+                        )
+                        .offset(
+                            x = when (viewMode) {
+                                AssistViewMode.Overview -> 26.dp
+                                AssistViewMode.TopDown -> 12.dp
+                                AssistViewMode.Side -> 18.dp
+                            },
+                            y = when (viewMode) {
+                                AssistViewMode.Overview -> 4.dp
+                                AssistViewMode.TopDown -> 24.dp
+                                AssistViewMode.Side -> (-8).dp
+                            }
+                        ),
+                    label = "重心区",
+                    color = Amber
+                )
+                SceneMarker(
+                    modifier = Modifier
+                        .align(
+                            when (viewMode) {
+                                AssistViewMode.Overview -> Alignment.CenterEnd
+                                AssistViewMode.TopDown -> Alignment.BottomEnd
+                                AssistViewMode.Side -> Alignment.BottomEnd
+                            }
+                        )
+                        .offset(
+                            x = when (viewMode) {
+                                AssistViewMode.Overview -> (-68).dp
+                                AssistViewMode.TopDown -> (-78).dp
+                                AssistViewMode.Side -> (-60).dp
+                            },
+                            y = when (viewMode) {
+                                AssistViewMode.Overview -> 36.dp
+                                AssistViewMode.TopDown -> (-82).dp
+                                AssistViewMode.Side -> (-88).dp
+                            }
+                        ),
+                    label = "终点",
+                    color = Mint
+                )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatusPill("货车 1", Amber.copy(alpha = 0.16f))
-                StatusPill("无人机 1", CyanGlow.copy(alpha = 0.18f))
-                StatusPill("人员 1", Coral.copy(alpha = 0.14f))
-                StatusPill("设备 1", OceanBlue.copy(alpha = 0.14f))
-                StatusPill("物体 3", Mint.copy(alpha = 0.14f))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                scenePreset.tags.forEach { tag ->
+                    StatusPill(tag, OceanBlue.copy(alpha = 0.14f))
+                }
+                StatusPill(if (truckProfile.articulated) "半挂结构" else "整车结构", OceanBlue.copy(alpha = 0.14f))
+                StatusPill("实景演示", OceanBlue.copy(alpha = 0.14f))
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AssistTargetBadge(
+                    title = "视角说明",
+                    detail = scenePreset.subtitle,
+                    color = OceanBlue
+                )
+                AssistTargetBadge(
+                    title = "固定状态",
+                    detail = cargoStability,
+                    color = truckStatusColor
+                )
+                AssistTargetBadge(
+                    title = "当前节点",
+                    detail = routeNodes.getOrNull(activeNodeIndex)?.title ?: "前端左系固点",
+                    color = Amber
+                )
             }
 
             Card(
@@ -1172,18 +1052,26 @@ private fun AssistSceneCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "目标态势",
+                        text = "固定态势",
                         color = overlayText,
                         style = MaterialTheme.typography.titleMedium
                     )
                     RiskBand(level = currentRiskLevel)
-                    PerceptionLegendRow("货车", truckStatus, truckStatusColor, overlayText)
-                    PerceptionLegendRow("左侧目标", "$leftTargetStatus / $leftDistance", Coral, overlayText)
-                    PerceptionLegendRow("右侧目标", "$rightTargetStatus / $rightDistance", Amber, overlayText)
-                    PerceptionLegendRow("后方余量", "$rearTargetStatus / $rearDistance", Mint, overlayText)
-                    PerceptionLegendRow("辅助设备", if (viewMode == AssistViewMode.TopDown) "支撑柱 / 托盘已识别" else "设备轮廓稳定", OceanBlue, overlayText)
+                    PerceptionLegendRow("固定结果", cargoStability, truckStatusColor, overlayText)
+                    PerceptionLegendRow("车型规格", truckProfile.specLabel, OceanBlue, overlayText)
+                    PerceptionLegendRow("绑带张力", strapTension, Coral, overlayText)
+                    PerceptionLegendRow("捆绑角度", fixingAngle, Amber, overlayText)
+                    PerceptionLegendRow("点位间距", anchorSpacing, Mint, overlayText)
+                    PerceptionLegendRow("路径进度", "${(fixingProgress * 100).toInt()}%", OceanBlue, overlayText)
                 }
             }
+
+            MultiAngleCard(
+                themeMode = themeMode,
+                pulseAlpha = pulseAlpha,
+                activeNodeIndex = activeNodeIndex,
+                demoMode = demoMode
+            )
         }
     }
 }
@@ -1204,15 +1092,1313 @@ private fun AssistSummaryRow(state: ZhiGuUiState, demoMode: AssistDemoMode) {
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        AssistMetricCard("识别目标", "4", CyanGlow)
-        AssistMetricCard("安全余量", when (demoMode) {
-            AssistDemoMode.Normal -> if (state.missionProgress >= 75) "0.8m" else "0.4m"
-            AssistDemoMode.Approaching -> "0.3m"
-            AssistDemoMode.SafePass -> "1.8m"
+        AssistMetricCard("系固点位", "3", CyanGlow)
+        AssistMetricCard("受力角度", when (demoMode) {
+            AssistDemoMode.Normal -> "46°"
+            AssistDemoMode.Approaching -> "31°"
+            AssistDemoMode.SafePass -> "52°"
         }, Mint)
         AssistMetricCard("无人机速度", if (demoMode == AssistDemoMode.Approaching) "1.8m/s" else "1.4m/s", OceanBlue)
-        AssistMetricCard("货车状态", if (currentRiskLevel == AssistRiskLevel.Safe) "稳定" else "预警", Amber)
+        AssistMetricCard("固定状态", if (currentRiskLevel == AssistRiskLevel.Safe) "稳定" else "预警", Amber)
         AssistMetricCard("风险等级", currentRiskLevel.label, currentRiskLevel.color)
+    }
+}
+
+@Composable
+private fun AssistScene3DCard(
+    state: ZhiGuUiState,
+    viewMode: AssistViewMode,
+    demoMode: AssistDemoMode,
+    themeMode: AssistThemeMode,
+    truckProfile: DemoTruckProfile
+) {
+    val sweepTransition = rememberInfiniteTransition(label = "perception_scene_v2")
+    val scanProgress by sweepTransition.animateFloat(
+        initialValue = 0.12f,
+        targetValue = 0.88f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scan_progress_v2"
+    )
+    val droneOffset by sweepTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "drone_offset_v2"
+    )
+    val pulseAlpha by sweepTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha_v2"
+    )
+
+    val routeNodes = state.routeNodes
+    val activeNodeIndex = routeNodes.indexOfFirst { it.status == RouteNodeStatus.Active }.let { if (it == -1) 0 else it }
+    val completedCount = routeNodes.count { it.status == RouteNodeStatus.Completed }
+    val fixingProgress = (completedCount + scanProgress.coerceIn(0.15f, 0.95f)) / routeNodes.size.toFloat()
+    val strapTension = when (demoMode) {
+        AssistDemoMode.Normal -> "8.4kN"
+        AssistDemoMode.Approaching -> "7.2kN"
+        AssistDemoMode.SafePass -> "9.1kN"
+    }
+    val fixingAngle = when (demoMode) {
+        AssistDemoMode.Normal -> "46°"
+        AssistDemoMode.Approaching -> "31°"
+        AssistDemoMode.SafePass -> "52°"
+    }
+    val anchorSpacing = when (demoMode) {
+        AssistDemoMode.Normal -> "1.0m"
+        AssistDemoMode.Approaching -> "1.3m"
+        AssistDemoMode.SafePass -> "0.9m"
+    }
+    val cargoStability = when (demoMode) {
+        AssistDemoMode.Normal -> "重心覆盖中"
+        AssistDemoMode.Approaching -> "尾部需补强"
+        AssistDemoMode.SafePass -> "固定稳定"
+    }
+    val truckStatusColor = when (demoMode) {
+        AssistDemoMode.SafePass -> Mint
+        AssistDemoMode.Approaching -> Coral
+        AssistDemoMode.Normal -> Amber
+    }
+    val currentRiskLevel = when {
+        demoMode == AssistDemoMode.Approaching -> AssistRiskLevel.Alert
+        demoMode == AssistDemoMode.SafePass -> AssistRiskLevel.Safe
+        state.findings.count { !it.resolved } >= 3 -> AssistRiskLevel.Alert
+        state.findings.count { !it.resolved } >= 1 -> AssistRiskLevel.Notice
+        else -> AssistRiskLevel.Safe
+    }
+    var rotationX by remember(viewMode, truckProfile.id) {
+        mutableStateOf(
+            when (viewMode) {
+                AssistViewMode.Overview -> 22f
+                AssistViewMode.TopDown -> 68f
+                AssistViewMode.Side -> 4f
+            }
+        )
+    }
+    var rotationY by remember(viewMode, truckProfile.id) {
+        mutableStateOf(
+            when (viewMode) {
+                AssistViewMode.Overview -> -28f
+                AssistViewMode.TopDown -> -16f
+                AssistViewMode.Side -> -88f
+            }
+        )
+    }
+    var sceneScale by remember(truckProfile.id) { mutableStateOf(1.24f) }
+    val overlayText = Color(0xFF1E2A3A)
+    val panelBackground = if (themeMode == AssistThemeMode.Night) NightCard.copy(alpha = 0.84f) else Color.White.copy(alpha = 0.82f)
+    val scenePreset = when (viewMode) {
+        AssistViewMode.Overview -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_overview,
+            title = "总览镜头",
+            subtitle = "高位斜俯视查看整车比例、货物排布和主压带覆盖",
+            tags = listOf("高位总览", "平板半挂", "托盘货物")
+        )
+        AssistViewMode.TopDown -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_top,
+            title = "顶部压带",
+            subtitle = "查看绑带跨过货面的覆盖范围与受力路径",
+            tags = listOf("顶部走带", "覆盖范围", "受力闭环")
+        )
+        AssistViewMode.Side -> AssistScenePreset(
+            imageRes = R.drawable.assist_scene_side_points,
+            title = "侧视点位",
+            subtitle = "查看车侧锚点、压带落点与货物层高关系",
+            tags = listOf("侧边锚点", "压带落点", "货物层高")
+        )
+    }
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            SectionHeader("系固态势", "3D 演示半挂车、托盘货物、绑带路径和无人机牵引关系")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(520.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            if (themeMode == AssistThemeMode.Night) {
+                                listOf(Color(0xFF18212A), Color(0xFF28323E), Color(0xFF10161D))
+                            } else {
+                                listOf(Color(0xFFF2F5F8), Color(0xFFE2E8EE), Color(0xFFD4DCE5))
+                            }
+                        )
+                    )
+            ) {
+                ReferenceTruckFixingScene(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(viewMode) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                sceneScale = (sceneScale * zoom).coerceIn(0.88f, 2.15f)
+                                rotationY = (rotationY + pan.x * 0.18f).coerceIn(-180f, 180f)
+                                if (viewMode == AssistViewMode.Overview) {
+                                    rotationX = (rotationX - pan.y * 0.10f).coerceIn(12f, 74f)
+                                }
+                            }
+                        }
+                        .pointerInput(viewMode) {
+                            detectDragGestures { _, dragAmount ->
+                                rotationY = (rotationY + dragAmount.x * 0.18f).coerceIn(-180f, 180f)
+                                if (viewMode == AssistViewMode.Overview) {
+                                    rotationX = (rotationX - dragAmount.y * 0.08f).coerceIn(12f, 74f)
+                                }
+                            }
+                        },
+                    demoMode = demoMode,
+                    pulseAlpha = pulseAlpha,
+                    droneOffset = droneOffset,
+                    scanProgress = scanProgress,
+                    activeNodeIndex = activeNodeIndex,
+                    viewMode = viewMode,
+                    rotationX = rotationX,
+                    rotationY = rotationY,
+                    truckProfile = truckProfile,
+                    sceneScale = sceneScale
+                )
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatusPill(scenePreset.title, Color.Black.copy(alpha = 0.38f))
+                    StatusPill(truckProfile.label, Color.Black.copy(alpha = 0.38f))
+                    StatusPill("3D", Color.Black.copy(alpha = 0.38f))
+                }
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    AssistTargetBadge("视角", scenePreset.subtitle, OceanBlue)
+                    AssistTargetBadge("固定状态", cargoStability, truckStatusColor)
+                    AssistTargetBadge("当前节点", routeNodes.getOrNull(activeNodeIndex)?.title ?: "前端左系固点", Amber)
+                    AssistTargetBadge("缩放", "${(sceneScale * 100).toInt()}%", Mint)
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                scenePreset.tags.forEach { tag ->
+                    StatusPill(tag, OceanBlue.copy(alpha = 0.14f))
+                }
+                StatusPill(if (truckProfile.articulated) "半挂结构" else "整车结构", OceanBlue.copy(alpha = 0.14f))
+                StatusPill("双指缩放 / 拖动旋转", OceanBlue.copy(alpha = 0.14f))
+            }
+
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = panelBackground)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("固定态势", color = overlayText, style = MaterialTheme.typography.titleMedium)
+                    RiskBand(level = currentRiskLevel)
+                    PerceptionLegendRow("固定结果", cargoStability, truckStatusColor, overlayText)
+                    PerceptionLegendRow("车型规格", truckProfile.specLabel, OceanBlue, overlayText)
+                    PerceptionLegendRow("绑带张力", strapTension, Coral, overlayText)
+                    PerceptionLegendRow("捆绑角度", fixingAngle, Amber, overlayText)
+                    PerceptionLegendRow("点位间距", anchorSpacing, Mint, overlayText)
+                    PerceptionLegendRow("路径进度", "${(fixingProgress * 100).toInt()}%", OceanBlue, overlayText)
+                }
+            }
+
+            MultiAngleCard(
+                themeMode = themeMode,
+                pulseAlpha = pulseAlpha,
+                activeNodeIndex = activeNodeIndex,
+                demoMode = demoMode
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReferenceTruckFixingScene(
+    modifier: Modifier,
+    demoMode: AssistDemoMode,
+    pulseAlpha: Float,
+    droneOffset: Float,
+    scanProgress: Float,
+    activeNodeIndex: Int,
+    viewMode: AssistViewMode,
+    rotationX: Float,
+    rotationY: Float,
+    truckProfile: DemoTruckProfile,
+    sceneScale: Float
+) {
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width * 0.53f, size.height * 0.54f)
+        val scale = size.minDimension * 0.46f * sceneScale
+        val floorColor = Color(0xFF2C343A)
+        val floorHighlight = Color(0xFF66727B).copy(alpha = 0.16f)
+        val trailerTopColor = Color(0xFFD3B68E)
+        val trailerEdgeColor = Color(0xFF1A1D21)
+        val trailerSideColor = Color(0xFF343A40)
+        val cabBodyColor = Color(0xFFF4F5F5)
+        val cabShadowColor = Color(0xFFD9DCDD)
+        val wheelColor = Color(0xFF16191D)
+        val wheelHubColor = Color(0xFF7A8188)
+        val palletColor = Color(0xFF8D6B42)
+        val cargoTopColor = Color(0xFFF1F2F3)
+        val cargoSideColor = Color(0xFFD9DDE0)
+        val strapOrange = Color(0xFFE27A3F)
+        val strapKhaki = Color(0xFFB8A06A)
+        val outlineColor = Color(0xFF0F1215)
+
+        fun project(point: Point3D): ProjectedPoint {
+            val yaw = Math.toRadians(rotationY.toDouble())
+            val pitch = Math.toRadians(
+                when (viewMode) {
+                    AssistViewMode.TopDown -> 72.0
+                    AssistViewMode.Side -> 2.0
+                    AssistViewMode.Overview -> rotationX.toDouble()
+                }
+            )
+            val rotatedX = (point.x * kotlin.math.cos(yaw) + point.z * kotlin.math.sin(yaw)).toFloat()
+            val rotatedZ = (-point.x * kotlin.math.sin(yaw) + point.z * kotlin.math.cos(yaw)).toFloat()
+            val rotatedY = (point.y * kotlin.math.cos(pitch) - rotatedZ * kotlin.math.sin(pitch)).toFloat()
+            val depth = (point.y * kotlin.math.sin(pitch) + rotatedZ * kotlin.math.cos(pitch)).toFloat()
+            val orthoScale = scale * when (viewMode) {
+                AssistViewMode.TopDown -> 0.9f
+                AssistViewMode.Side -> 0.78f
+                AssistViewMode.Overview -> 0.84f
+            }
+            return ProjectedPoint(
+                offset = Offset(
+                    x = center.x + rotatedX * orthoScale,
+                    y = center.y - rotatedY * orthoScale + depth * orthoScale * 0.04f
+                ),
+                depth = depth
+            )
+        }
+
+        fun drawFace(points: List<Point3D>, color: Color) {
+            val projected = points.map(::project)
+            val path = Path().apply {
+                moveTo(projected.first().offset.x, projected.first().offset.y)
+                projected.drop(1).forEach { lineTo(it.offset.x, it.offset.y) }
+                close()
+            }
+            drawPath(path, color = color)
+        }
+
+        fun drawOutline(points: List<Point3D>, color: Color = outlineColor, width: Float = 2.6f) {
+            val projected = points.map(::project)
+            val path = Path().apply {
+                moveTo(projected.first().offset.x, projected.first().offset.y)
+                projected.drop(1).forEach { lineTo(it.offset.x, it.offset.y) }
+                close()
+            }
+            drawPath(path = path, color = color, style = Stroke(width = width))
+        }
+
+        fun drawPolyline(points: List<Point3D>, color: Color, width: Float, dashed: Boolean = false) {
+            val path = Path()
+            points.map(::project).forEachIndexed { index, projected ->
+                if (index == 0) path.moveTo(projected.offset.x, projected.offset.y) else path.lineTo(projected.offset.x, projected.offset.y)
+            }
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(
+                    width = width,
+                    cap = StrokeCap.Round,
+                    pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(18f, 12f)) else null
+                )
+            )
+        }
+
+        fun drawSegment3D(
+            start: Point3D,
+            end: Point3D,
+            color: Color,
+            width: Float,
+            dashed: Boolean = false
+        ) {
+            val a = project(start).offset
+            val b = project(end).offset
+            drawLine(
+                color = color,
+                start = a,
+                end = b,
+                strokeWidth = width,
+                cap = StrokeCap.Round,
+                pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(14f, 10f)) else null
+            )
+        }
+
+        val cabLength = 0.84f
+        val gapLength = if (truckProfile.articulated) 0.24f else 0.04f
+        val trailerLength = when {
+            truckProfile.cargoLengthMeters >= 13f -> 2.95f
+            truckProfile.cargoLengthMeters >= 9f -> 2.25f
+            truckProfile.cargoLengthMeters >= 7f -> 1.92f
+            else -> 1.36f
+        }
+        val vehicleLength = cabLength + gapLength + trailerLength
+        val trailerWidth = 0.70f
+        val trailerDeckHeight = 0.05f
+        val trailerThickness = 0.12f
+        val cargoHeight = 0.42f
+        val vehicleRear = vehicleLength / 2f
+        val vehicleFront = -vehicleLength / 2f
+        val trailerRear = vehicleRear - 0.02f
+        val trailerFront = trailerRear - trailerLength
+        val cabFront = vehicleFront
+        val cabRear = if (truckProfile.articulated) trailerFront - gapLength - 0.04f else trailerFront - 0.04f
+        val cabWidth = trailerWidth * 0.42f
+        val cabHeight = 0.60f
+        val trailerScaleLabel = "${truckProfile.cargoLengthMeters}m"
+
+        val floor = listOf(
+            Point3D(vehicleFront - 1.0f, -0.28f, -1.7f),
+            Point3D(vehicleRear + 1.2f, -0.28f, -1.7f),
+            Point3D(vehicleRear + 1.2f, -0.28f, 1.7f),
+            Point3D(vehicleFront - 1.0f, -0.28f, 1.7f)
+        )
+        drawFace(floor, floorColor)
+        drawOutline(floor, floorHighlight, 1.8f)
+
+        repeat(4) { index ->
+            val start = project(Point3D(vehicleFront - 0.9f + index * 1.15f, -0.275f, -1.55f)).offset
+            val end = project(Point3D(vehicleFront - 0.65f + index * 1.15f, -0.275f, 1.55f)).offset
+            drawLine(color = floorHighlight, start = start, end = end, strokeWidth = 2f)
+        }
+
+        val trailerTop = listOf(
+            Point3D(trailerFront, trailerDeckHeight, -trailerWidth),
+            Point3D(trailerRear, trailerDeckHeight, -trailerWidth),
+            Point3D(trailerRear, trailerDeckHeight, trailerWidth),
+            Point3D(trailerFront, trailerDeckHeight, trailerWidth)
+        )
+        val trailerRight = listOf(
+            Point3D(trailerRear, trailerDeckHeight, -trailerWidth),
+            Point3D(trailerRear, -trailerThickness, -trailerWidth),
+            Point3D(trailerRear, -trailerThickness, trailerWidth),
+            Point3D(trailerRear, trailerDeckHeight, trailerWidth)
+        )
+        val trailerSide = listOf(
+            Point3D(trailerFront, trailerDeckHeight, trailerWidth),
+            Point3D(trailerRear, trailerDeckHeight, trailerWidth),
+            Point3D(trailerRear, -trailerThickness, trailerWidth),
+            Point3D(trailerFront, -trailerThickness, trailerWidth)
+        )
+
+        val cabTop = listOf(
+            Point3D(cabFront, cabHeight, -cabWidth),
+            Point3D(cabRear, cabHeight, -cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth),
+            Point3D(cabFront, cabHeight, cabWidth)
+        )
+        val cabRight = listOf(
+            Point3D(cabRear, cabHeight, -cabWidth),
+            Point3D(cabRear, 0f, -cabWidth),
+            Point3D(cabRear, 0f, cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth)
+        )
+        val cabSide = listOf(
+            Point3D(cabFront, cabHeight, cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth),
+            Point3D(cabRear, 0f, cabWidth),
+            Point3D(cabFront, 0f, cabWidth)
+        )
+        val cabWindshield = listOf(
+            Point3D(cabFront + cabLength * 0.12f, cabHeight * 0.84f, cabWidth * 0.82f),
+            Point3D(cabFront + cabLength * 0.52f, cabHeight * 0.88f, cabWidth * 0.82f),
+            Point3D(cabFront + cabLength * 0.52f, cabHeight * 0.42f, cabWidth * 0.82f),
+            Point3D(cabFront + cabLength * 0.12f, cabHeight * 0.38f, cabWidth * 0.82f)
+        )
+        val cabSideWindow = listOf(
+            Point3D(cabFront + cabLength * 0.36f, cabHeight * 0.82f, cabWidth * 0.84f),
+            Point3D(cabRear - cabLength * 0.12f, cabHeight * 0.78f, cabWidth * 0.84f),
+            Point3D(cabRear - cabLength * 0.12f, cabHeight * 0.46f, cabWidth * 0.84f),
+            Point3D(cabFront + cabLength * 0.4f, cabHeight * 0.48f, cabWidth * 0.84f)
+        )
+        val grille = listOf(
+            Point3D(cabFront + cabLength * 0.06f, cabHeight * 0.34f, cabWidth * 0.78f),
+            Point3D(cabFront + cabLength * 0.3f, cabHeight * 0.34f, cabWidth * 0.78f),
+            Point3D(cabFront + cabLength * 0.3f, cabHeight * 0.12f, cabWidth * 0.78f),
+            Point3D(cabFront + cabLength * 0.06f, cabHeight * 0.12f, cabWidth * 0.78f)
+        )
+
+        val trailerShadow = listOf(
+            Point3D(trailerFront + 0.1f, -0.255f, -trailerWidth * 1.08f),
+            Point3D(trailerRear + 0.25f, -0.255f, -trailerWidth * 1.08f),
+            Point3D(trailerRear + 0.25f, -0.255f, trailerWidth * 1.08f),
+            Point3D(trailerFront + 0.1f, -0.255f, trailerWidth * 1.08f)
+        )
+        val cabShadow = listOf(
+            Point3D(cabFront - 0.08f, -0.255f, -cabWidth * 1.15f),
+            Point3D(cabRear + 0.1f, -0.255f, -cabWidth * 1.15f),
+            Point3D(cabRear + 0.1f, -0.255f, cabWidth * 1.15f),
+            Point3D(cabFront - 0.08f, -0.255f, cabWidth * 1.15f)
+        )
+
+        drawFace(trailerShadow, Color.Black.copy(alpha = 0.18f))
+        drawFace(cabShadow, Color.Black.copy(alpha = 0.14f))
+
+        drawFace(trailerTop, trailerTopColor)
+        drawFace(trailerRight, trailerEdgeColor)
+        drawFace(trailerSide, trailerSideColor)
+        drawOutline(trailerTop)
+        drawOutline(trailerRight)
+        drawOutline(trailerSide)
+
+        drawFace(cabTop, cabBodyColor)
+        drawFace(cabRight, cabShadowColor)
+        drawFace(cabSide, cabBodyColor)
+        drawOutline(cabTop, Color(0xFFBFC5CA))
+        drawOutline(cabRight, Color(0xFFB4BBC0))
+        drawOutline(cabSide, Color(0xFFBFC5CA))
+        drawFace(cabWindshield, Color(0xFF88A7B9).copy(alpha = 0.88f))
+        drawFace(cabSideWindow, Color(0xFF7D99A9).copy(alpha = 0.84f))
+        drawFace(grille, Color(0xFF353A3F))
+
+        drawSegment3D(
+            Point3D(cabFront + cabLength * 0.18f, cabHeight * 0.22f, cabWidth * 0.82f),
+            Point3D(cabFront + cabLength * 0.28f, cabHeight * 0.22f, cabWidth * 0.82f),
+            Color(0xFFF7F0C8),
+            4f
+        )
+        drawSegment3D(
+            Point3D(cabFront + cabLength * 0.18f, cabHeight * 0.22f, -cabWidth * 0.82f),
+            Point3D(cabFront + cabLength * 0.28f, cabHeight * 0.22f, -cabWidth * 0.82f),
+            Color(0xFFF7F0C8),
+            4f
+        )
+
+        if (truckProfile.articulated) {
+            drawPolyline(
+                listOf(
+                    Point3D(cabRear, 0.04f, 0f),
+                    Point3D(cabRear + gapLength * 0.35f, 0.04f, 0f),
+                    Point3D(trailerFront - 0.05f, 0.04f, 0f)
+                ),
+                Color(0xFF272B31),
+                5f
+            )
+        }
+
+        val sideRailY = trailerDeckHeight + 0.012f
+        drawSegment3D(
+            Point3D(trailerFront + 0.04f, sideRailY, trailerWidth * 0.98f),
+            Point3D(trailerRear - 0.04f, sideRailY, trailerWidth * 0.98f),
+            Color(0xFF0F1114),
+            4f
+        )
+        drawSegment3D(
+            Point3D(trailerFront + 0.04f, sideRailY, -trailerWidth * 0.98f),
+            Point3D(trailerRear - 0.04f, sideRailY, -trailerWidth * 0.98f),
+            Color(0xFF0F1114),
+            4f
+        )
+
+        repeat(9) { index ->
+            val beamX = trailerFront + 0.1f + index * ((trailerRear - trailerFront - 0.2f) / 8f)
+            drawSegment3D(
+                Point3D(beamX, -trailerThickness + 0.01f, trailerWidth * 0.96f),
+                Point3D(beamX, -trailerThickness + 0.01f, -trailerWidth * 0.96f),
+                Color(0xFF454B52),
+                2.4f
+            )
+            drawSegment3D(
+                Point3D(beamX, trailerDeckHeight + 0.002f, trailerWidth * 0.96f),
+                Point3D(beamX, trailerDeckHeight + 0.002f, -trailerWidth * 0.96f),
+                Color(0xFFE2C79C).copy(alpha = 0.44f),
+                1.6f
+            )
+        }
+
+        val landingLegX = trailerFront + 0.12f
+        drawSegment3D(
+            Point3D(landingLegX, 0f, trailerWidth * 0.45f),
+            Point3D(landingLegX, -0.22f, trailerWidth * 0.45f),
+            Color(0xFF616971),
+            5f
+        )
+        drawSegment3D(
+            Point3D(landingLegX, 0f, -trailerWidth * 0.28f),
+            Point3D(landingLegX, -0.22f, -trailerWidth * 0.28f),
+            Color(0xFF616971),
+            5f
+        )
+
+        val palletRows = 3
+        val palletColumns = 6
+        val columnSpacing = 0.08f
+        val palletWidth = 0.18f
+        val palletDepth = 0.34f
+        val palletHeight = 0.03f
+        val stackHeight = cargoHeight
+        val cargoStartX = trailerFront + 0.34f
+        val cargoEndX = trailerRear - 0.42f
+        val usableLength = cargoEndX - cargoStartX
+        val cellLength = usableLength / palletColumns
+        val rowCenters = listOf(trailerWidth * 0.5f, trailerWidth * 0.12f, -trailerWidth * 0.26f)
+
+        for (row in 0 until palletRows) {
+            for (column in 0 until palletColumns) {
+                val xFront = cargoStartX + column * cellLength + columnSpacing * 0.25f
+                val xRear = xFront + palletDepth
+                val zCenter = rowCenters[row]
+                val zNear = zCenter - palletWidth
+                val zFar = zCenter + palletWidth
+                val topHeight = stackHeight * (0.84f + 0.06f * ((column + row) % 4))
+
+                val palletTop = listOf(
+                    Point3D(xFront, palletHeight, zNear),
+                    Point3D(xRear, palletHeight, zNear),
+                    Point3D(xRear, palletHeight, zFar),
+                    Point3D(xFront, palletHeight, zFar)
+                )
+                val palletSide = listOf(
+                    Point3D(xFront, palletHeight, zFar),
+                    Point3D(xRear, palletHeight, zFar),
+                    Point3D(xRear, 0f, zFar),
+                    Point3D(xFront, 0f, zFar)
+                )
+                val cargoTop = listOf(
+                    Point3D(xFront, topHeight, zNear),
+                    Point3D(xRear, topHeight, zNear),
+                    Point3D(xRear, topHeight, zFar),
+                    Point3D(xFront, topHeight, zFar)
+                )
+                val cargoRight = listOf(
+                    Point3D(xRear, topHeight, zNear),
+                    Point3D(xRear, palletHeight, zNear),
+                    Point3D(xRear, palletHeight, zFar),
+                    Point3D(xRear, topHeight, zFar)
+                )
+                val cargoSide = listOf(
+                    Point3D(xFront, topHeight, zFar),
+                    Point3D(xRear, topHeight, zFar),
+                    Point3D(xRear, palletHeight, zFar),
+                    Point3D(xFront, palletHeight, zFar)
+                )
+
+                drawFace(palletTop, palletColor)
+                drawFace(palletSide, palletColor.copy(alpha = 0.92f))
+                drawFace(cargoTop, cargoTopColor)
+                drawFace(cargoRight, cargoSideColor)
+                drawFace(cargoSide, cargoSideColor.copy(alpha = 0.96f))
+                drawOutline(cargoTop, Color(0xFFBCC1C6), 1.6f)
+                drawOutline(cargoRight, Color(0xFFBCC1C6), 1.6f)
+                drawOutline(cargoSide, Color(0xFFBCC1C6), 1.6f)
+
+                repeat(3) { seam ->
+                    val seamX = xFront + (seam + 1) * (palletDepth / 4f)
+                    drawSegment3D(
+                        Point3D(seamX, topHeight + 0.001f, zNear),
+                        Point3D(seamX, topHeight + 0.001f, zFar),
+                        Color(0xFFCDD1D5),
+                        1.4f
+                    )
+                }
+                repeat(2) { seam ->
+                    val seamZ = zNear + (seam + 1) * ((zFar - zNear) / 3f)
+                    drawSegment3D(
+                        Point3D(xFront, topHeight + 0.001f, seamZ),
+                        Point3D(xRear, topHeight + 0.001f, seamZ),
+                        Color(0xFFCDD1D5),
+                        1.2f
+                    )
+                }
+
+                if ((column + row) % 2 == 0) {
+                    drawSegment3D(
+                        Point3D((xFront + xRear) / 2f, topHeight + 0.002f, zNear),
+                        Point3D((xFront + xRear) / 2f, palletHeight, zNear),
+                        Color(0xFF6E7378).copy(alpha = 0.86f),
+                        2f
+                    )
+                }
+            }
+        }
+
+        for (markerIndex in 0..8) {
+            val markerX = trailerFront + 0.18f + markerIndex * ((trailerRear - trailerFront - 0.36f) / 8f)
+            drawSegment3D(
+                Point3D(markerX, -0.02f, trailerWidth * 1.01f),
+                Point3D(markerX + 0.05f, -0.02f, trailerWidth * 1.01f),
+                if (markerIndex % 2 == 0) Color(0xFFE6F0F6) else Color(0xFFD44848),
+                3.2f
+            )
+        }
+
+        val strapCount = when {
+            trailerLength >= 2.7f -> 5
+            trailerLength >= 2.2f -> 4
+            trailerLength >= 1.7f -> 3
+            else -> 2
+        }
+        val strapAnchors = buildList {
+            repeat(strapCount) { index ->
+                val t = if (strapCount == 1) 0.5f else index / (strapCount - 1f)
+                val strapX = trailerFront + 0.42f + (trailerLength - 0.84f) * t
+                val topHeight = cargoHeight + 0.1f + 0.03f * ((index + 1) % 2)
+                val topNear = Point3D(strapX, topHeight, trailerWidth * 0.24f)
+                val topFar = Point3D(strapX, topHeight, -trailerWidth * 0.22f)
+                val start = Point3D(strapX, trailerDeckHeight + 0.01f, trailerWidth * 0.92f)
+                val end = Point3D(strapX, trailerDeckHeight + 0.01f, -trailerWidth * 0.82f)
+                add(listOf(start, topNear, topFar, end))
+            }
+        }
+
+        strapAnchors.forEach { strapPath ->
+            drawPolyline(strapPath, strapOrange, 8f)
+        }
+        drawSegment3D(
+            Point3D(droneOffset * 0f + trailerFront + 0.92f, cargoHeight + 0.04f, trailerWidth * 0.04f),
+            Point3D(trailerFront + 0.88f, trailerDeckHeight + 0.02f, trailerWidth * 0.64f),
+            strapKhaki,
+            5f
+        )
+
+        val centerAnchor = Point3D((trailerFront + trailerRear) / 2f, cargoHeight + 0.18f, 0f)
+        val tailAnchor = Point3D(trailerRear - 0.18f, trailerDeckHeight + 0.02f, trailerWidth * 0.78f)
+        drawPolyline(
+            listOf(centerAnchor, Point3D(trailerRear - 0.08f, cargoHeight * 0.55f, trailerWidth * 0.32f), tailAnchor),
+            if (demoMode == AssistDemoMode.Approaching) Coral else Mint,
+            5f,
+            dashed = true
+        )
+        drawPolyline(
+            listOf(
+                Point3D(trailerFront + 0.22f, trailerDeckHeight + 0.02f, -trailerWidth * 0.78f),
+                Point3D(trailerFront + 0.96f, cargoHeight * 0.88f, trailerWidth * 0.26f),
+                Point3D(trailerRear - 0.48f, trailerDeckHeight + 0.02f, -trailerWidth * 0.66f)
+            ),
+            CyanGlow.copy(alpha = 0.96f),
+            6f
+        )
+
+        drawLine(
+            color = CyanGlow.copy(alpha = 0.46f),
+            start = Offset(size.width * 0.10f, size.height * (0.20f + scanProgress * 0.42f)),
+            end = Offset(size.width * 0.92f, size.height * (0.18f + scanProgress * 0.36f)),
+            strokeWidth = 5f,
+            cap = StrokeCap.Round
+        )
+
+        val axlePoints = if (truckProfile.articulated) {
+            listOf(
+                cabRear - 0.14f,
+                cabRear - 0.02f,
+                trailerRear - 0.44f,
+                trailerRear - 0.18f,
+                trailerRear + 0.08f
+            )
+        } else {
+            listOf(cabRear - 0.04f, trailerRear - 0.26f)
+        }
+        axlePoints.forEach { x ->
+            listOf(-trailerWidth * 0.82f, trailerWidth * 0.82f).forEach { z ->
+                val wheelPoint = project(Point3D(x, -0.18f, z))
+                drawCircle(wheelColor, radius = 16f, center = wheelPoint.offset)
+                drawCircle(wheelHubColor, radius = 6f, center = wheelPoint.offset)
+                drawCircle(Color.Black.copy(alpha = 0.16f), radius = 22f, center = wheelPoint.offset + Offset(0f, 8f))
+            }
+        }
+
+        val startAnchor = strapAnchors.first().first()
+        val routeCenterAnchor = centerAnchor
+        val endAnchor = Point3D(trailerRear - 0.26f, trailerDeckHeight + 0.02f, trailerWidth * 0.82f)
+        listOf(
+            Triple(startAnchor, Coral, 0),
+            Triple(routeCenterAnchor, Amber, 1),
+            Triple(endAnchor, Mint, 2)
+        ).forEach { (point, color, index) ->
+            val projected = project(point)
+            val isActive = index == activeNodeIndex
+            val halo = if (isActive) 28f + 10f * pulseAlpha else 18f
+            drawCircle(color.copy(alpha = if (isActive) 0.22f + 0.18f * pulseAlpha else 0.14f), radius = halo, center = projected.offset)
+            drawCircle(color, radius = 11f, center = projected.offset)
+            drawCircle(Color.White.copy(alpha = 0.9f), radius = 4f, center = projected.offset)
+        }
+
+        if (viewMode == AssistViewMode.Side) {
+            val dimensionY = -0.34f
+            val dimensionStart = Point3D(trailerFront, dimensionY, trailerWidth * 0.92f)
+            val dimensionEnd = Point3D(trailerRear, dimensionY, trailerWidth * 0.92f)
+            val leftTickTop = Point3D(trailerFront, dimensionY + 0.06f, trailerWidth * 0.92f)
+            val rightTickTop = Point3D(trailerRear, dimensionY + 0.06f, trailerWidth * 0.92f)
+            drawSegment3D(dimensionStart, dimensionEnd, Color(0xFFE8EDF2), 3.2f)
+            drawSegment3D(dimensionStart, leftTickTop, Color(0xFFE8EDF2), 3.2f)
+            drawSegment3D(dimensionEnd, rightTickTop, Color(0xFFE8EDF2), 3.2f)
+
+            val startOffset = project(dimensionStart).offset
+            val endOffset = project(dimensionEnd).offset
+            val centerOffset = Offset(
+                x = (startOffset.x + endOffset.x) / 2f,
+                y = (startOffset.y + endOffset.y) / 2f - 18f
+            )
+            drawRoundRect(
+                color = Color.Black.copy(alpha = 0.42f),
+                topLeft = Offset(centerOffset.x - 66f, centerOffset.y - 18f),
+                size = Size(132f, 36f),
+                cornerRadius = CornerRadius(16f, 16f)
+            )
+            drawLine(
+                color = Amber,
+                start = Offset(centerOffset.x - 28f, centerOffset.y),
+                end = Offset(centerOffset.x + 28f, centerOffset.y),
+                strokeWidth = 4f,
+                cap = StrokeCap.Round
+            )
+        }
+
+        val drone = Offset(
+            size.width * (0.34f + 0.12f * droneOffset),
+            size.height * (0.19f + 0.02f * kotlin.math.sin(droneOffset * Math.PI).toFloat())
+        )
+        val centerProjected = project(centerAnchor).offset
+        drawCircle(Color.Black.copy(alpha = 0.18f), radius = 52f + 14f * pulseAlpha, center = drone)
+        drawCircle(Color(0xFF1E2328), radius = 18f, center = drone)
+        drawCircle(Color(0xFF3C444C), radius = 8f, center = drone)
+        drawLine(Color(0xFFE6E8EA), Offset(drone.x - 40f, drone.y - 4f), Offset(drone.x + 40f, drone.y + 4f), 5f, StrokeCap.Round)
+        drawLine(Color(0xFFE6E8EA), Offset(drone.x - 24f, drone.y - 26f), Offset(drone.x + 24f, drone.y + 26f), 5f, StrokeCap.Round)
+        drawLine(Color(0xFF14181D), Offset(drone.x - 12f, drone.y + 10f), Offset(drone.x + 12f, drone.y + 10f), 4f, StrokeCap.Round)
+        drawLine(Color(0xFF0E1114), Offset(drone.x, drone.y + 16f), centerProjected, 4f, StrokeCap.Round)
+        drawLine(
+            color = CyanGlow.copy(alpha = 0.46f),
+            start = Offset(drone.x, drone.y + 16f),
+            end = centerProjected,
+            strokeWidth = 3f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
+        )
+    }
+}
+
+@Composable
+private fun MultiAngleCard(
+    themeMode: AssistThemeMode,
+    pulseAlpha: Float,
+    activeNodeIndex: Int,
+    demoMode: AssistDemoMode
+) {
+    val textColor = if (themeMode == AssistThemeMode.Night) Color.White else InkBlue
+    val subTextColor = if (themeMode == AssistThemeMode.Night) Color.White.copy(alpha = 0.76f) else InkBlue.copy(alpha = 0.72f)
+    val cardBackground = if (themeMode == AssistThemeMode.Night) NightCard.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.92f)
+    val angleCards = listOf(
+        Triple("总览镜头", "看整车、货物排布和主绑带覆盖", AssistViewMode.Overview),
+        Triple("顶视走带", "看绑带压带方向和覆盖范围", AssistViewMode.TopDown),
+        Triple("侧视点位", "看车侧系固点、层高和落点", AssistViewMode.Side)
+    )
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBackground)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("视角切换", color = textColor, style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                angleCards.forEachIndexed { index, (title, caption, mode) ->
+                    Card(
+                        modifier = Modifier.width(188.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = textColor.copy(alpha = if (themeMode == AssistThemeMode.Night) 0.08f else 0.05f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(120.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            if (themeMode == AssistThemeMode.Night) {
+                                                listOf(InkBlue, OceanBlue.copy(alpha = 0.9f))
+                                            } else {
+                                                listOf(Color(0xFFDDEBFF), Color(0xFFA8CCFF))
+                                            }
+                                        )
+                                    )
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    val start = Offset(w * 0.22f, h * 0.7f)
+                                    val center = Offset(w * 0.5f, if (mode == AssistViewMode.Side) h * 0.38f else h * 0.46f)
+                                    val end = Offset(w * 0.78f, h * 0.68f)
+
+                                    when (mode) {
+                                        AssistViewMode.TopDown -> {
+                                            drawRoundRect(
+                                                color = textColor.copy(alpha = 0.12f),
+                                                topLeft = Offset(w * 0.14f, h * 0.2f),
+                                                size = Size(w * 0.72f, h * 0.56f),
+                                                cornerRadius = CornerRadius(20f, 20f)
+                                            )
+                                            drawRoundRect(
+                                                color = Amber.copy(alpha = 0.74f),
+                                                topLeft = Offset(w * 0.34f, h * 0.34f),
+                                                size = Size(w * 0.32f, h * 0.24f),
+                                                cornerRadius = CornerRadius(18f, 18f)
+                                            )
+                                        }
+                                        AssistViewMode.Side -> {
+                                            drawLine(
+                                                color = textColor.copy(alpha = 0.16f),
+                                                start = Offset(w * 0.14f, h * 0.78f),
+                                                end = Offset(w * 0.86f, h * 0.78f),
+                                                strokeWidth = 4f
+                                            )
+                                            drawRoundRect(
+                                                color = Amber.copy(alpha = 0.74f),
+                                                topLeft = Offset(w * 0.26f, h * 0.36f),
+                                                size = Size(w * 0.42f, h * 0.24f),
+                                                cornerRadius = CornerRadius(18f, 18f)
+                                            )
+                                        }
+                                        AssistViewMode.Overview -> {
+                                            val truck = Path().apply {
+                                                moveTo(w * 0.28f, h * 0.28f)
+                                                lineTo(w * 0.78f, h * 0.28f)
+                                                lineTo(w * 0.66f, h * 0.72f)
+                                                lineTo(w * 0.16f, h * 0.72f)
+                                                close()
+                                            }
+                                            drawPath(truck, color = textColor.copy(alpha = 0.12f))
+                                            val cargo = Path().apply {
+                                                moveTo(w * 0.36f, h * 0.36f)
+                                                lineTo(w * 0.62f, h * 0.36f)
+                                                lineTo(w * 0.56f, h * 0.58f)
+                                                lineTo(w * 0.3f, h * 0.58f)
+                                                close()
+                                            }
+                                            drawPath(cargo, color = Amber.copy(alpha = 0.72f))
+                                        }
+                                    }
+
+                                    drawPath(
+                                        Path().apply {
+                                            moveTo(start.x, start.y)
+                                            quadraticTo(w * 0.38f, h * 0.32f, center.x, center.y)
+                                            quadraticTo(w * 0.62f, h * 0.34f, end.x, end.y)
+                                        },
+                                        color = Coral,
+                                        style = Stroke(width = 5f, cap = StrokeCap.Round)
+                                    )
+                                    drawPath(
+                                        Path().apply {
+                                            moveTo(start.x + 10f, start.y - 10f)
+                                            quadraticTo(w * 0.44f, h * 0.82f, end.x - 12f, end.y - 8f)
+                                        },
+                                        color = CyanGlow,
+                                        style = Stroke(width = 4f, cap = StrokeCap.Round)
+                                    )
+
+                                    listOf(Coral, Amber, Mint).forEachIndexed { nodeIndex, color ->
+                                        val point = when (nodeIndex) {
+                                            0 -> start
+                                            1 -> center
+                                            else -> end
+                                        }
+                                        val active = nodeIndex == activeNodeIndex
+                                        drawCircle(
+                                            color = color.copy(alpha = if (active) 0.24f + 0.18f * pulseAlpha else 0.14f),
+                                            radius = if (active) 12f + 6f * pulseAlpha else 10f,
+                                            center = point
+                                        )
+                                        drawCircle(color, radius = 6f, center = point)
+                                    }
+                                }
+                                StatusPill(
+                                    if (index == activeNodeIndex) "当前讲解" else if (demoMode == AssistDemoMode.Approaching && index == 2) "补强关注" else "镜头 ${index + 1}",
+                                    Color.Black.copy(alpha = 0.22f),
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(10.dp)
+                                )
+                            }
+                            Text(title, color = textColor, style = MaterialTheme.typography.titleMedium)
+                            Text(caption, color = subTextColor, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SceneMarker(
+    modifier: Modifier = Modifier,
+    label: String,
+    color: Color
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.Black.copy(alpha = 0.38f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun InteractiveFixingScene(
+    modifier: Modifier,
+    overlayText: Color,
+    demoMode: AssistDemoMode,
+    pulseAlpha: Float,
+    droneOffset: Float,
+    scanProgress: Float,
+    activeNodeIndex: Int,
+    viewMode: AssistViewMode,
+    rotationX: Float,
+    rotationY: Float,
+    truckProfile: DemoTruckProfile,
+    sceneScale: Float
+) {
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width * 0.5f, size.height * 0.52f)
+        val scale = size.minDimension * 0.41f * sceneScale
+        val perspective = 3.3f
+        val floorColor = Color(0xFFE7ECF2)
+        val bedTopColor = Color(0xFFD2DAE4)
+        val bedSideColor = Color(0xFFB8C4D1)
+        val cabTopColor = Color(0xFF4B5E73)
+        val cabSideColor = Color(0xFF36485C)
+        val cargoTopColor = Color(0xFFD9A03B)
+        val cargoSideColor = Color(0xFFB77E26)
+        val outlineColor = Color(0xFF243447)
+
+        fun project(point: Point3D): ProjectedPoint {
+            val yaw = Math.toRadians(rotationY.toDouble())
+            val pitch = Math.toRadians(
+                when (viewMode) {
+                    AssistViewMode.TopDown -> 68.0
+                    AssistViewMode.Side -> 8.0
+                    AssistViewMode.Overview -> rotationX.toDouble()
+                }
+            )
+            val rotatedX = (point.x * kotlin.math.cos(yaw) + point.z * kotlin.math.sin(yaw)).toFloat()
+            val rotatedZ = (-point.x * kotlin.math.sin(yaw) + point.z * kotlin.math.cos(yaw)).toFloat()
+            val rotatedY = (point.y * kotlin.math.cos(pitch) - rotatedZ * kotlin.math.sin(pitch)).toFloat()
+            val depth = (point.y * kotlin.math.sin(pitch) + rotatedZ * kotlin.math.cos(pitch)).toFloat()
+            val distance = perspective - depth
+            val factor = scale / distance
+            return ProjectedPoint(
+                offset = Offset(center.x + rotatedX * factor, center.y - rotatedY * factor),
+                depth = depth
+            )
+        }
+
+        fun drawFace(points: List<Point3D>, color: Color) {
+            val projected = points.map(::project)
+            val path = Path().apply {
+                moveTo(projected.first().offset.x, projected.first().offset.y)
+                projected.drop(1).forEach { lineTo(it.offset.x, it.offset.y) }
+                close()
+            }
+            drawPath(path, color = color)
+        }
+
+        fun drawOutline(points: List<Point3D>, color: Color = outlineColor, width: Float = 3f) {
+            val projected = points.map(::project)
+            val path = Path().apply {
+                moveTo(projected.first().offset.x, projected.first().offset.y)
+                projected.drop(1).forEach { lineTo(it.offset.x, it.offset.y) }
+                close()
+            }
+            drawPath(path = path, color = color, style = Stroke(width = width))
+        }
+
+        fun drawPolyline(points: List<Point3D>, color: Color, width: Float, dashed: Boolean = false) {
+            val path = Path()
+            points.map(::project).forEachIndexed { index, projected ->
+                if (index == 0) path.moveTo(projected.offset.x, projected.offset.y)
+                else path.lineTo(projected.offset.x, projected.offset.y)
+            }
+            drawPath(
+                path = path,
+                color = color,
+                style = Stroke(
+                    width = width,
+                    cap = StrokeCap.Round,
+                    pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(18f, 12f)) else null
+                )
+            )
+        }
+
+        val normalizedTotalLength = 2.9f
+        val cargoLengthRatio = truckProfile.cargoLengthMeters / truckProfile.totalLengthMeters
+        val cabLengthRatio = truckProfile.cabLengthMeters / truckProfile.totalLengthMeters
+        val gapRatio = truckProfile.trailerGapMeters / truckProfile.totalLengthMeters
+        val vehicleLength = normalizedTotalLength
+        val cargoLength = vehicleLength * cargoLengthRatio.coerceIn(0.45f, 0.84f)
+        val cabLength = vehicleLength * cabLengthRatio.coerceIn(0.12f, 0.22f)
+        val gapLength = vehicleLength * gapRatio.coerceIn(0f, 0.08f)
+        val widthScale = (truckProfile.cargoWidthMeters / 2.55f).coerceIn(0.82f, 1f)
+        val cargoWidth = 0.55f * widthScale
+        val cargoHeightScale = (truckProfile.cargoHeightMeters / 3.0f).coerceIn(0.6f, 1f)
+        val cargoHeight = 0.5f * cargoHeightScale
+        val bedHeight = 0.2f
+        val vehicleRear = vehicleLength / 2f
+        val vehicleFront = -vehicleLength / 2f
+        val cargoRear = vehicleRear - 0.08f
+        val cargoFront = cargoRear - cargoLength
+        val cabFront = vehicleFront
+        val cabRear = if (truckProfile.articulated) cargoFront - gapLength - 0.02f else cargoFront - 0.02f
+        val cabWidth = cargoWidth * 0.86f
+        val cabHeight = 0.46f
+
+        val bedTop = listOf(
+            Point3D(cargoFront, 0f, -cargoWidth),
+            Point3D(cargoRear, 0f, -cargoWidth),
+            Point3D(cargoRear, 0f, cargoWidth),
+            Point3D(cargoFront, 0f, cargoWidth)
+        )
+        val bedRight = listOf(
+            Point3D(cargoRear, 0f, -cargoWidth),
+            Point3D(cargoRear, -bedHeight, -cargoWidth),
+            Point3D(cargoRear, -bedHeight, cargoWidth),
+            Point3D(cargoRear, 0f, cargoWidth)
+        )
+        val bedFront = listOf(
+            Point3D(cargoFront, 0f, cargoWidth),
+            Point3D(cargoRear, 0f, cargoWidth),
+            Point3D(cargoRear, -bedHeight, cargoWidth),
+            Point3D(cargoFront, -bedHeight, cargoWidth)
+        )
+        val cabTop = listOf(
+            Point3D(cabFront, cabHeight, -cabWidth),
+            Point3D(cabRear, cabHeight, -cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth),
+            Point3D(cabFront, cabHeight, cabWidth)
+        )
+        val cabSide = listOf(
+            Point3D(cabRear, cabHeight, -cabWidth),
+            Point3D(cabRear, 0f, -cabWidth),
+            Point3D(cabRear, 0f, cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth)
+        )
+        val cabFrontFace = listOf(
+            Point3D(cabFront, cabHeight, cabWidth),
+            Point3D(cabRear, cabHeight, cabWidth),
+            Point3D(cabRear, 0f, cabWidth),
+            Point3D(cabFront, 0f, cabWidth)
+        )
+
+        val cargoInsetFront = cargoFront + cargoLength * 0.18f
+        val cargoInsetRear = cargoRear - cargoLength * 0.14f
+        val cargoInsetWidth = cargoWidth * 0.58f
+        val cargoTop = listOf(
+            Point3D(cargoInsetFront, cargoHeight, -cargoInsetWidth),
+            Point3D(cargoInsetRear, cargoHeight, -cargoInsetWidth),
+            Point3D(cargoInsetRear, cargoHeight, cargoInsetWidth),
+            Point3D(cargoInsetFront, cargoHeight, cargoInsetWidth)
+        )
+        val cargoRight = listOf(
+            Point3D(cargoInsetRear, cargoHeight, -cargoInsetWidth),
+            Point3D(cargoInsetRear, 0f, -cargoInsetWidth),
+            Point3D(cargoInsetRear, 0f, cargoInsetWidth),
+            Point3D(cargoInsetRear, cargoHeight, cargoInsetWidth)
+        )
+        val cargoFrontFace = listOf(
+            Point3D(cargoInsetFront, cargoHeight, cargoInsetWidth),
+            Point3D(cargoInsetRear, cargoHeight, cargoInsetWidth),
+            Point3D(cargoInsetRear, 0f, cargoInsetWidth),
+            Point3D(cargoInsetFront, 0f, cargoInsetWidth)
+        )
+        val groundPlane = listOf(
+            Point3D(vehicleFront - 0.5f, -0.22f, -1.1f),
+            Point3D(vehicleRear + 0.4f, -0.22f, -1.1f),
+            Point3D(vehicleRear + 0.4f, -0.22f, 1.1f),
+            Point3D(vehicleFront - 0.5f, -0.22f, 1.1f)
+        )
+
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.62f),
+            topLeft = Offset(size.width * 0.06f, size.height * 0.08f),
+            size = Size(size.width * 0.88f, size.height * 0.82f),
+            cornerRadius = CornerRadius(36f, 36f)
+        )
+        drawFace(groundPlane, floorColor)
+        drawOutline(groundPlane, Color(0xFFBAC5D0), 2f)
+        drawFace(bedTop, bedTopColor)
+        drawFace(bedRight, bedSideColor)
+        drawFace(bedFront, bedSideColor.copy(alpha = 0.95f))
+        drawFace(cabTop, cabTopColor)
+        drawFace(cabSide, cabSideColor)
+        drawFace(cabFrontFace, cabTopColor.copy(alpha = 0.94f))
+        drawFace(cargoTop, cargoTopColor)
+        drawFace(cargoRight, cargoSideColor)
+        drawFace(cargoFrontFace, cargoSideColor.copy(alpha = 0.94f))
+        drawOutline(bedTop)
+        drawOutline(bedRight, width = 2.5f)
+        drawOutline(bedFront, width = 2.5f)
+        drawOutline(cabTop)
+        drawOutline(cabSide, width = 2.5f)
+        drawOutline(cabFrontFace, width = 2.5f)
+        drawOutline(cargoTop)
+        drawOutline(cargoRight, width = 2.5f)
+        drawOutline(cargoFrontFace, width = 2.5f)
+
+        if (truckProfile.articulated) {
+            drawPolyline(
+                listOf(
+                    Point3D(cabRear + 0.02f, 0.06f, 0f),
+                    Point3D(cargoFront - gapLength * 0.4f, 0.06f, 0f),
+                    Point3D(cargoFront - 0.02f, 0.06f, 0f)
+                ),
+                outlineColor.copy(alpha = 0.5f),
+                width = 4f
+            )
+        }
+
+        val startAnchor = Point3D(cargoFront + cargoLength * 0.08f, 0.05f, cargoWidth * 0.72f)
+        val centerAnchor = Point3D((cargoFront + cargoRear) / 2f, cargoHeight + 0.08f, 0f)
+        val endAnchor = Point3D(cargoRear - cargoLength * 0.1f, 0.05f, cargoWidth * 0.72f)
+        val tailAnchor = Point3D(cargoRear - cargoLength * 0.02f, 0.1f, cargoWidth * 0.92f)
+
+        drawPolyline(
+            listOf(
+                startAnchor,
+                Point3D(cargoFront + cargoLength * 0.28f, cargoHeight + 0.1f, cargoWidth * 0.08f),
+                centerAnchor,
+                Point3D(cargoRear - cargoLength * 0.28f, cargoHeight + 0.1f, cargoWidth * 0.08f),
+                endAnchor
+            ),
+            Coral.copy(alpha = 0.96f),
+            width = 8f
+        )
+        drawPolyline(
+            listOf(
+                Point3D(cargoFront + cargoLength * 0.1f, 0.1f, -cargoWidth * 0.68f),
+                Point3D((cargoFront + cargoRear) / 2f - cargoLength * 0.08f, cargoHeight * 0.8f, cargoWidth * 0.42f),
+                Point3D(cargoRear - cargoLength * 0.14f, 0.08f, -cargoWidth * 0.56f)
+            ),
+            CyanGlow.copy(alpha = 0.94f),
+            width = 6f
+        )
+        drawPolyline(
+            listOf(centerAnchor, Point3D(cargoRear - cargoLength * 0.14f, cargoHeight * 0.36f, cargoWidth * 0.42f), tailAnchor),
+            if (demoMode == AssistDemoMode.Approaching) Coral else Mint,
+            width = 5f,
+            dashed = true
+        )
+
+        drawLine(
+            color = CyanGlow.copy(alpha = 0.52f),
+            start = Offset(size.width * 0.14f, size.height * (0.22f + scanProgress * 0.46f)),
+            end = Offset(size.width * 0.9f, size.height * (0.18f + scanProgress * 0.4f)),
+            strokeWidth = 5f,
+            cap = StrokeCap.Round
+        )
+
+        truckProfile.axleLayout.forEachIndexed { index, axle ->
+            val x = if (truckProfile.articulated) {
+                when {
+                    index < 2 -> cabRear - 0.18f + axle * 0.18f
+                    else -> cargoRear - 0.46f + (index - 2) * 0.22f
+                }
+            } else {
+                vehicleFront + (axle + 1.4f) / 3.5f * vehicleLength
+            }
+            listOf(-cargoWidth * 0.82f, cargoWidth * 0.82f).forEach { z ->
+                val wheelPoint = project(Point3D(x, -0.18f, z))
+                drawCircle(Color(0xFF1B2330), radius = 10f, center = wheelPoint.offset)
+                drawCircle(Color(0xFF7A8797), radius = 4f, center = wheelPoint.offset)
+            }
+        }
+
+        listOf(
+            Triple(startAnchor, Coral, 0),
+            Triple(centerAnchor, Amber, 1),
+            Triple(endAnchor, Mint, 2)
+        ).forEach { (point, color, index) ->
+            val projected = project(point)
+            val isActive = index == activeNodeIndex
+            val halo = if (isActive) 28f + 10f * pulseAlpha else 18f
+            drawCircle(color.copy(alpha = if (isActive) 0.22f + 0.18f * pulseAlpha else 0.14f), radius = halo, center = projected.offset)
+            drawCircle(color, radius = 11f, center = projected.offset)
+            drawCircle(Color.White.copy(alpha = 0.9f), radius = 4f, center = projected.offset)
+        }
+
+        val drone = Offset(
+            size.width * (0.2f + 0.2f * droneOffset),
+            size.height * (0.18f + 0.02f * kotlin.math.sin(droneOffset * Math.PI).toFloat())
+        )
+        val centerProjected = project(centerAnchor).offset
+        drawCircle(
+            color = Color(0xFF5B6D83).copy(alpha = 0.12f * pulseAlpha),
+            radius = 44f + 18f * pulseAlpha,
+            center = drone
+        )
+        drawCircle(CyanGlow.copy(alpha = 0.9f), radius = 14f, center = drone)
+        drawLine(
+            color = outlineColor.copy(alpha = 0.92f),
+            start = Offset(drone.x - 22f, drone.y),
+            end = Offset(drone.x + 22f, drone.y),
+            strokeWidth = 4f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = outlineColor.copy(alpha = 0.92f),
+            start = Offset(drone.x, drone.y - 16f),
+            end = Offset(drone.x, drone.y + 16f),
+            strokeWidth = 4f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = CyanGlow.copy(alpha = 0.55f),
+            start = Offset(drone.x, drone.y + 14f),
+            end = centerProjected,
+            strokeWidth = 3f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))
+        )
     }
 }
 
@@ -1247,33 +2433,33 @@ private fun AssistTargetListCard(
 ) {
     val targetItems = listOf(
         AssistTargetItem(
-            "左侧人员",
+            "前端左系固点",
             when (demoMode) {
-                AssistDemoMode.Normal -> if (state.missionProgress >= 50) "已识别，距车 1.2m" else "目标靠近中，距车 2.4m"
-                AssistDemoMode.Approaching -> "人员快速逼近，当前 0.6m"
-                AssistDemoMode.SafePass -> "人员已离开风险区，当前 2.8m"
+                AssistDemoMode.Normal -> "起始固定位已锁定，建议缠绕 2 圈后起飞"
+                AssistDemoMode.Approaching -> "前端受力不足，建议补充预紧"
+                AssistDemoMode.SafePass -> "起始锚点稳定，受力正常"
             },
             Coral,
-            Icons.Outlined.Person,
-            if (demoMode == AssistDemoMode.SafePass) AssistRiskLevel.Safe else AssistRiskLevel.Alert
+            Icons.Outlined.CheckCircle,
+            if (demoMode == AssistDemoMode.SafePass) AssistRiskLevel.Safe else AssistRiskLevel.Notice
         ),
         AssistTargetItem(
-            "右侧障碍物",
+            "重心区加固点",
             when (demoMode) {
-                AssistDemoMode.Normal -> if (state.missionProgress >= 75) "锥桶区域，建议保持 0.8m 以上距离" else "边界检测中，当前 1.6m"
-                AssistDemoMode.Approaching -> "障碍物进入危险区，当前 0.5m"
-                AssistDemoMode.SafePass -> "障碍物已通过，当前 2.2m"
+                AssistDemoMode.Normal -> "交叉绑带覆盖重心区，当前角度 46°"
+                AssistDemoMode.Approaching -> "重心区覆盖偏浅，建议提高交叉角度"
+                AssistDemoMode.SafePass -> "重心区受力均衡，覆盖完成"
             },
             Amber,
-            Icons.Outlined.Construction,
+            Icons.Outlined.ViewInAr,
             if (demoMode == AssistDemoMode.Approaching) AssistRiskLevel.Alert else AssistRiskLevel.Notice
         ),
         AssistTargetItem(
-            "尾部余量",
+            "后端右系固点",
             when (demoMode) {
-                AssistDemoMode.Normal -> if (state.missionProgress >= 100) "尾部空间充足，当前 1.5m" else "尾部需复核，当前 0.4m"
-                AssistDemoMode.Approaching -> "尾部空间紧张，当前 0.3m"
-                AssistDemoMode.SafePass -> "尾部空间充足，当前 1.8m"
+                AssistDemoMode.Normal -> "终点固定中，尾部防移位约束待确认"
+                AssistDemoMode.Approaching -> "尾部补强不足，存在移位风险"
+                AssistDemoMode.SafePass -> "终点锁定完成，尾部补强到位"
             },
             Mint,
             Icons.Outlined.SwapHoriz,
@@ -1283,8 +2469,21 @@ private fun AssistTargetListCard(
                 AssistDemoMode.Normal -> if (state.missionProgress >= 100) AssistRiskLevel.Safe else AssistRiskLevel.Notice
             }
         ),
-        AssistTargetItem("无人机轨迹", if (viewMode == AssistViewMode.TopDown) "沿货车左前方巡检轨迹稳定飞行，航速 ${if (demoMode == AssistDemoMode.Approaching) "1.8" else "1.4"}m/s" else "侧视下保持低速平稳跟踪，俯角稳定", CyanGlow, Icons.Outlined.Air, AssistRiskLevel.Safe),
-        AssistTargetItem("货车轮廓", "车身边界已锁定，车头朝向右前，持续跟踪中", OceanBlue, Icons.Outlined.LocalShipping, AssistRiskLevel.Safe)
+        AssistTargetItem(
+            "无人机牵引轨迹",
+            if (viewMode == AssistViewMode.Side) "侧视跟踪绑带抬升高度，当前航速 ${if (demoMode == AssistDemoMode.Approaching) "1.8" else "1.4"}m/s"
+            else "沿规划路径稳定巡检，实时校验点位与绑带走向",
+            CyanGlow,
+            Icons.Outlined.Air,
+            AssistRiskLevel.Safe
+        ),
+        AssistTargetItem(
+            "货厢固定面",
+            "货厢边界与货物轮廓已锁定，可持续讲解固定路径和覆盖范围",
+            OceanBlue,
+            Icons.Outlined.LocalShipping,
+            AssistRiskLevel.Safe
+        )
     )
 
     Card(
@@ -1295,7 +2494,7 @@ private fun AssistTargetListCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SectionHeader("目标列表", "周边目标识别结果")
+            SectionHeader("固定点位", "核心锚点与路径说明")
             targetItems.forEach { item ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1356,7 +2555,7 @@ private fun AssistGuidanceCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SectionHeader("辅助策略", "演示建议")
+            SectionHeader("演示策略", "比赛讲解建议")
             DashboardStatusLine("当前任务", state.missionStatus)
             DashboardStatusLine("风险数量", "${state.findings.count { !it.resolved }} 项")
             DashboardStatusLine("显示视角", viewMode.label)
@@ -1366,13 +2565,13 @@ private fun AssistGuidanceCard(
             DashboardStatusLine(
                 "建议播报",
                 when (demoMode) {
-                    AssistDemoMode.Normal -> if (state.missionProgress < 50) "说明无人机正在识别周边人员与物体" else "说明系统已锁定货车周边关键目标"
-                    AssistDemoMode.Approaching -> "强调风险目标逼近、系统正在实时预警"
-                    AssistDemoMode.SafePass -> "强调风险已解除、辅助系统完成安全通过提示"
+                    AssistDemoMode.Normal -> if (state.missionProgress < 50) "先讲起点和重心区，再切俯视说明交叉路径如何覆盖货物" else "重点讲三处系固点如何形成完整受力闭环"
+                    AssistDemoMode.Approaching -> "强调尾部补强不足和角度偏差，展示系统如何一眼定位问题"
+                    AssistDemoMode.SafePass -> "强调起点、重心区、终点已全部锁定，形成稳定固定效果"
                 }
             )
             Text(
-                text = "这个页面是纯展示型辅助感知屏，不依赖真实算法输入，适合在比赛现场稳定模拟类似智能驾驶的感知界面效果。",
+                text = "这一页现在更适合作为“系固讲解大屏”使用，重点不是算法真实性，而是让评委快速看明白货物如何被固定、哪里是关键点、为什么这样绑更稳定。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate,
                 textAlign = TextAlign.Start
@@ -2316,9 +3515,9 @@ private fun SectionHeader(title: String, caption: String) {
 }
 
 @Composable
-private fun StatusPill(text: String, containerColor: Color) {
+private fun StatusPill(text: String, containerColor: Color, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(999.dp))
             .background(containerColor)
             .padding(horizontal = 12.dp, vertical = 8.dp)
